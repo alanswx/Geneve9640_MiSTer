@@ -27,7 +27,7 @@ module emu
 
 assign ADC_BUS  = 'Z;
 assign USER_OUT = '1;
-assign {UART_RTS, UART_TXD, UART_DTR} = 0;
+assign {UART_RTS, UART_DTR} = 0;
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DDRAM_WE} = '0;
 
@@ -276,6 +276,28 @@ geneve_disk disk
 
 assign LED_DISK = {1'b0, disk_busy};
 
+/////////////////  DEBUG UART  //////////////////
+
+// Every 0.1 s on UART TX (/dev/ttyS1 on the HPS, 115200 baud), 16 hex digits:
+// PC | DRAM requests | DRAM acks | CPU cycles[31:16] | ROM bytes/256 | flags
+wire [15:0] dbg_pc;
+wire [63:0] dbg_cycles;
+reg   [7:0] dbg_dreq, dbg_dack, dbg_rom;
+always @(posedge clk_sys) begin
+	if (dram_req) dbg_dreq <= dbg_dreq + 1'd1;
+	if (dram_ack) dbg_dack <= dbg_dack + 1'd1;
+	if (ioctl_download && ioctl_wr && ioctl_index == 16'd0 && ioctl_addr[7:0] == 8'd0 && dbg_rom != 8'hff)
+		dbg_rom <= dbg_rom + 1'd1;
+end
+
+dbg_uart #(.CLK_HZ(21477272), .PERIOD(2147727)) dbg_uart
+(
+	.clk(clk_sys),
+	.value({dbg_pc, dbg_dreq, dbg_dack, dbg_cycles[31:16], dbg_rom,
+	        reset, pll_locked, ioctl_download, disk_busy, fdc_ready, 2'b00}),
+	.tx(UART_TXD)
+);
+
 /////////////////  MACHINE  ///////////////////////
 
 wire [5:0] r, g, b;
@@ -309,7 +331,7 @@ geneve_core core
 	.fdc_rd(fdc_rd), .fdc_wr(fdc_wr), .fdc_lsn(fdc_lsn), .fdc_drive(fdc_drive), .fdc_ack(fdc_ack),
 	.fdc_buf_wr(fdc_buf_wr), .fdc_buf_addr(fdc_buf_addr), .fdc_buf_din(fdc_buf_din), .fdc_buf_dout(fdc_buf_dout),
 
-	.dbg_inst(), .dbg_pc(), .dbg_wp(), .dbg_st(), .dbg_ir(), .dbg_op1(), .dbg_op2(), .dbg_cycles()
+	.dbg_inst(), .dbg_pc(dbg_pc), .dbg_wp(), .dbg_st(), .dbg_ir(), .dbg_op1(), .dbg_op2(), .dbg_cycles(dbg_cycles)
 );
 
 /////////////////  VIDEO, AUDIO  //////////////////

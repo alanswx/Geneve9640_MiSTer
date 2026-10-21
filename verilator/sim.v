@@ -75,13 +75,28 @@ always @(posedge clk) if ((core.bus_as || core.bus_rs || core.bus_ack) && core.d
    $display("t=%0d c=%0d as=%b rs=%b we=%b ack=%b addr=%04x dout=%02x onchip=%b func=%0d pend_w=%b", $time, core.dbg_cycles, core.bus_as, core.bus_rs, core.bus_we, core.bus_ack, core.bus_addr, core.bus_dout, core.bus_onchip, core.func, core.pend_write);
 always @(posedge clk) if (dram_req && dram_addr < 19'h4) $display("DRAM %s %05x %02x (rd %02x) t=%0d", dram_we ? "W" : "R", dram_addr, dram_wdata, dram[dram_addr], core.dbg_cycles);
 `endif
+// DRAM with a fixed latency (DRAM_LAT clks), as the SDRAM behind the clock-domain handshake
+`ifndef DRAM_LAT
+`define DRAM_LAT 8
+`endif
+reg [4:0] dram_cnt = 0;
+reg [18:0] dram_a_r;
+reg dram_we_r;
+reg [7:0] dram_wd_r;
 always @(posedge clk) begin
    dram_ack <= 1'b0;
    if (dram_req) begin
-      if (dram_we) dram[dram_addr] <= dram_wdata;
-      dram_rdata <= dram[dram_addr];
+      dram_cnt <= `DRAM_LAT;
+      dram_a_r <= dram_addr;
+      dram_we_r <= dram_we;
+      dram_wd_r <= dram_wdata;
+   end else if (dram_cnt == 5'd1) begin
+      if (dram_we_r) dram[dram_a_r] <= dram_wd_r;
+      dram_rdata <= dram[dram_a_r];
       dram_ack <= 1'b1;
-   end
+      dram_cnt <= 0;
+   end else if (dram_cnt != 0)
+      dram_cnt <= dram_cnt - 1'b1;
 end
 
 geneve_core core (
