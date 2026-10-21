@@ -1,0 +1,20 @@
+# research material (ROMs, disk images, third-party docs and trees): local only
+/software/
+/emulators/
+/fpga_refs/
+/docs/
+# build / sim outputs
+/verilator/obj_dir*/
+/verilator/gen/
+/verilator/ghdl_work/
+/verilator/out/
+/db/
+/incremental_db/
+/output_files/
+/build_id.v
+/c5_pin_model_dump.txt
+*.rbf
+*.qws
+.DS_Store
+/verilator/roms/
+/verilator/*.log

@@ -1,0 +1,21 @@
+// Gate Array decoding results (MAME genboard.h functions)
+localparam logic [4:0]
+    F_UNDEF    = 5'd0,
+    F_VIDEO    = 5'd1,
+    F_MAPPER   = 5'd2,
+    F_KEY      = 5'd3,
+    F_SOUND    = 5'd4,
+    F_CLOCK    = 5'd5,
+    F_EXT      = 5'd6,
+    F_GROM     = 5'd7,
+    F_GROMAD   = 5'd8,
+    F_CARTROM  = 5'd9,
+    F_CARTBANK = 5'd10,
+    F_CARTPROT = 5'd11,
+    F_DRAM     = 5'd12,
+    F_EXP      = 5'd13,
+    F_EPROM    = 5'd14,
+    F_SRAM     = 5'd15,
+    F_SRAMX    = 5'd16,
+    F_SRAMU    = 5'd17,
+    F_BOX      = 5'd18;
