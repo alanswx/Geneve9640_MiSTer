@@ -42,6 +42,10 @@ logic [3:0]  int_level;
 // The timer reaching 0 on this phi edge (seen by the falling edge in the same clk)
 wire timer_fire = phi_rise && clockdiv == 6'd63 && decrementer_value == 14'd1 && clock_register != 14'd0;
 
+// INT7..INT15 share their pins with P15..P7: such a pin set as output is no interrupt
+wire [15:0] int_is_out = {p_dir[7], p_dir[8], p_dir[9], p_dir[10], p_dir[11], p_dir[12], p_dir[13], p_dir[14],
+                          p_dir[15], 7'd0};
+
 // Interrupt prioritisation (combinational, MAME prioritize_interrupts)
 logic        found;
 logic [3:0]  level;
@@ -55,7 +59,7 @@ always_comb begin
     found = 1'b0;
     level = 4'd15;
     for (int n = 1; n <= 15; n++) begin
-        if (!found && masked[n] && ((n < 7) || !p_dir[22 - n])) begin
+        if (!found && masked[n] && !int_is_out[n]) begin
             found = 1'b1;
             level = 4'(n);
         end
@@ -63,18 +67,19 @@ always_comb begin
 end
 
 // CRU read
+wire [3:0] pin_of_int = 4'(5'd22 - rd_bit);   // INT7..INT15 share P15..P7
 always_comb begin
     rd_data = 1'b0;
     if (rd_bit == 5'd0)
         rd_data = clock_mode;
     else if (rd_bit > 5'd15) begin
-        if (p_dir[rd_bit - 5'd16]) rd_data = p_out[rd_bit - 5'd16];
+        if (p_dir[rd_bit[3:0]]) rd_data = p_out[rd_bit[3:0]];
         else rd_data = (rd_bit <= 5'd22) ? pin_in[rd_bit] : pin_in[5'd38 - rd_bit];
     end else if (clock_mode) begin
         if (rd_bit == 5'd15) rd_data = !found;
         else rd_data = clock_read_register[rd_bit - 5'd1];
     end else begin
-        if (rd_bit > 5'd6 && p_dir[5'd22 - rd_bit]) rd_data = p_out[5'd22 - rd_bit];
+        if (rd_bit > 5'd6 && p_dir[pin_of_int]) rd_data = p_out[pin_of_int];
         else rd_data = pin_in[rd_bit];
     end
 end
@@ -97,8 +102,8 @@ always_ff @(posedge clk) begin
     end else begin
         if (cru_wr) begin
             if (cru_bit >= 5'd16) begin
-                p_dir[cru_bit - 5'd16] <= 1'b1;
-                p_out[cru_bit - 5'd16] <= cru_wdata;
+                p_dir[cru_bit[3:0]] <= 1'b1;
+                p_out[cru_bit[3:0]] <= cru_wdata;
             end else if (cru_bit == 5'd0)
                 clock_mode <= cru_wdata;
             else if (cru_bit == 5'd15) begin

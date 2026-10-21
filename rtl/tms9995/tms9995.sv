@@ -144,6 +144,7 @@ logic        in_reset;
 logic [7:0]  ram [0:255];
 
 logic [5:0]  pend;               // CLKOUT cycles to consume before the next micro-op
+logic [3:0]  credit;             // CLKOUT cycles (ce) not yet used
 logic [1:0]  rsamp;              // READY sampling pipeline after a pulse
 logic        waiting;            // waiting for bus_ack
 logic [2:0]  ack_kind;
@@ -1402,6 +1403,7 @@ always_ff @(posedge clk) begin
         in_reset = 1'b1;
         flag = 16'h0000;
         pend = 6'd0;
+        credit = 4'd0;
         rsamp = 2'd0;
         waiting = 1'b0;
         epilogue_pending = 1'b0;
@@ -1451,8 +1453,12 @@ always_ff @(posedge clk) begin
             if (rsamp == 2'd0) m_ready = ready;
         end
 
-        // Consume one CLKOUT cycle
-        if (ce && pend != 6'd0) begin
+        // CLKOUT cycles arrive as credit (ce); a booked cycle (pend) uses one. When
+        // the micro-operations fall behind real time (bus handshakes, zero-time
+        // steps), the credit lets the next cycles run on consecutive clks to catch up.
+        if (ce && credit != 4'hf) credit = credit + 4'd1;
+        if (credit != 4'd0 && pend != 6'd0) begin
+            credit = credit - 4'd1;
             pend = pend - 6'd1;
             clkout_v = 1'b1;
             cycles = cycles + 64'd1;

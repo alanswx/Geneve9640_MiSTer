@@ -164,8 +164,8 @@ void Sim::video()
     bool hs = top->vga_hs_n, vs = top->vga_vs_n;
     if (prev_hs && !hs) {
         if (px > maxpx) maxpx = px;
+        if (px) line++;          // count only lines with a display window
         px = 0;
-        line++;
     }
     if (prev_vs && !vs) {
         if (opt.pixstats) fprintf(stderr, "frame %u: %d lines, %d px/line, %llu lit samples\n", frame, line, maxpx, lit);
@@ -183,7 +183,7 @@ void Sim::video()
     }
     prev_hs = hs;
     prev_vs = vs;
-    if (top->vga_dhclk) {
+    if (top->vga_dhclk && top->vga_de) {
         if (px < VW && line < VH) {
             uint8_t *p = &fb[(line * VW + px) * 3];
             p[0] = (top->vga_r << 2) | (top->vga_r >> 4);
