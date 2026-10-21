@@ -38,6 +38,7 @@ module geneve_core #(
     output logic        vga_vs_n,
     output logic        vga_dhclk,     // dot clock enables of the VDP
     output logic        vga_dlclk,
+    output logic        vga_de,        // display window
 
     // Audio
     output logic [7:0]  sound,
@@ -264,12 +265,32 @@ logic [7:0] sram  [0:65535];
 logic [7:0] eprom [0:16383];
 logic [7:0] dsr   [0:8191];
 logic [7:0] fdcram [0:2047];
+logic [7:0] sram_q, eprom_q, dsr_q, fdcram_q;
+logic       sram_we, fdcram_we;
+logic [7:0] fdc_bank_q;
+
+// Block RAMs with registered reads. The address comes from the address set
+// (bus_addr, physpage), which is stable for at least a CLKOUT cycle before the
+// read phase, so the data is ready when the CPU samples it.
+wire [15:0] sram_a = {func != F_SRAMX, physpage[1:0], bus_addr[12:0]};
+always_ff @(posedge clk) begin
+    if (sram_we) sram[sram_a] <= bus_dout;
+    sram_q <= sram[sram_a];
+end
 
 always_ff @(posedge clk) begin
-    if (rom_wr) begin
-        if (!rom_addr[14]) eprom[rom_addr[13:0]] <= rom_data;
-        else if (rom_addr[14:13] == 2'b10) dsr[rom_addr[12:0]] <= rom_data;
-    end
+    if (rom_wr && !rom_addr[14]) eprom[rom_addr[13:0]] <= rom_data;
+    eprom_q <= eprom[{physpage[0], bus_addr[12:0]}];
+end
+
+always_ff @(posedge clk) begin
+    if (rom_wr && rom_addr[14:13] == 2'b10) dsr[rom_addr[12:0]] <= rom_data;
+    dsr_q <= dsr[{fdc_latch[3], box_addr[11:0]}];
+end
+
+always_ff @(posedge clk) begin
+    if (fdcram_we) fdcram[box_addr[10:0]] <= bus_dout;
+    fdcram_q <= fdcram[box_addr[10:0]];
 end
 
 //----------------------------------------------------------------------------
@@ -333,7 +354,7 @@ VDP vdp_i (
     .VDPSPEEDMODE(1'b0), .RATIOMODE(3'b000), .CENTERYJK_R25_N(1'b0),
     .PVIDEOR(vga_r), .PVIDEOG(vga_g), .PVIDEOB(vga_b),
     .PVIDEOHS_N(vga_hs_n), .PVIDEOVS_N(vga_vs_n), .PVIDEOCS_N(),
-    .PVIDEODHCLK(vga_dhclk), .PVIDEODLCLK(vga_dlclk), .BLANK_O(),
+    .PVIDEODHCLK(vga_dhclk), .PVIDEODLCLK(vga_dlclk), .BLANK_O(), .PVIDEODE(vga_de),
     .DISPRESO(1'b0), .NTSC_PAL_TYPE(1'b1), .FORCED_V_MODE(1'b0), .LEGACY_VGA(1'b0),
     .VDP_ID(5'b00000), .OFFSET_Y(7'd0)
 );
@@ -403,6 +424,8 @@ always_ff @(posedge clk) begin
     wd_rd <= 1'b0;
     wd_wr <= 1'b0;
     dram_req <= 1'b0;
+    sram_we <= 1'b0;
+    fdcram_we <= 1'b0;
 
     if (reset) begin
         bst <= B_IDLE;
@@ -431,9 +454,8 @@ always_ff @(posedge clk) begin
             end else begin
                 if (func == F_SOUND) snd_we <= 1'b1;
                 if (func == F_CLOCK) rtc_wr <= 1'b1;
-                if (func == F_SRAM)  sram[{1'b1, physpage[1:0], bus_addr[12:0]}] <= bus_dout;
-                if (func == F_SRAMX) sram[{1'b0, physpage[1:0], bus_addr[12:0]}] <= bus_dout;
-                if (ddcc_ram) fdcram[box_addr[10:0]] <= bus_dout;
+                if (func == F_SRAM || func == F_SRAMX) sram_we <= 1'b1;
+                if (ddcc_ram) fdcram_we <= 1'b1;
                 if (ddcc_fdc) wd_wr <= 1'b1;
                 bus_ack <= 1'b1;
             end
@@ -457,11 +479,10 @@ always_ff @(posedge clk) begin
                     v = {geneve_mode ? 4'hf : 4'(({11'd0, bus_addr[4:0]} + 16'd1) >> 4), rtc_rdata};
                     rtc_rd <= 1'b1;
                 end
-                if (func == F_EPROM) v = eprom[{physpage[0], bus_addr[12:0]}];
-                if (func == F_SRAM)  v = sram[{1'b1, physpage[1:0], bus_addr[12:0]}];
-                if (func == F_SRAMX) v = sram[{1'b0, physpage[1:0], bus_addr[12:0]}];
-                if (ddcc_ram) v = fdcram[box_addr[10:0]];
-                if (ddcc_rom) v = dsr[{fdc_latch[3], box_addr[11:0]}];
+                if (func == F_EPROM) v = eprom_q;
+                if (func == F_SRAM || func == F_SRAMX) v = sram_q;
+                if (ddcc_ram) v = fdcram_q;
+                if (ddcc_rom) v = dsr_q;
                 if (ddcc_fdc) begin
                     v = wd_dout;
                     wd_rd <= 1'b1;

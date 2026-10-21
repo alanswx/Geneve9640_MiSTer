@@ -288,6 +288,7 @@ ENTITY VDP IS
         PVIDEODLCLK         : OUT   STD_LOGIC;
 
         BLANK_O             : OUT   STD_LOGIC;
+        PVIDEODE            : OUT   STD_LOGIC;      -- Geneve9640_MiSTer: display window (as MSX_MiSTer)
 
         -- DISPLAY RESOLUTION (0=15kHz, 1=31kHz)
         DISPRESO            : IN    STD_LOGIC;
@@ -1074,6 +1075,8 @@ BEGIN
         BLANK_O             => BLANK_O,
         RATIOMODE           => RATIOMODE
     );
+
+    PVIDEODE    <=  BWINDOW;
 
     -- CHANGE DISPLAY MODE BY EXTERNAL INPUT PORT.
     PVIDEOR     <=  IVIDEOR_NTSC_PAL WHEN( DISPMODEVGA = '0' )ELSE
