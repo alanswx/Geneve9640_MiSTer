@@ -150,17 +150,6 @@ always_ff @(posedge clk) begin
     rdata_en <= rdata_en_c;
 end
 
-always_ff @(posedge clk) begin
-    func <= func_v;
-    physpage <= physpage_v;
-    dec_read <= dec_read_v;
-    geneve_mode <= geneve_mode_v;
-    kbd_clk_out <= kbd_clk_out_v;
-    dram_addr <= (func_v == F_GROM) ? {3'b111, dec_offset} : {physpage_v[5:0], dec_offset[12:0]};
-    kbdint <= keyboard_shift_reg[0];
-    kbd_ready <= shift_reg_enabled && (keyboard_shift_reg == 9'd0);
-    ready <= ready_q;
-end
 
 always_ff @(posedge clk) begin
     logic [4:0] f;
@@ -304,6 +293,17 @@ always_ff @(posedge clk) begin
             endcase
         end
     end
+
+    // Ports: registered copies of this clk's results (same edge in simulation and hardware)
+    func <= func_v;
+    physpage <= physpage_v;
+    dec_read <= dec_read_v;
+    geneve_mode <= geneve_mode_v;
+    kbd_clk_out <= kbd_clk_out_v;
+    dram_addr <= (func_v == F_GROM) ? {3'b111, dec_offset} : {physpage_v[5:0], dec_offset[12:0]};
+    kbdint <= keyboard_shift_reg[0];
+    kbd_ready <= shift_reg_enabled && (keyboard_shift_reg == 9'd0);
+    ready <= ready_q;
 end
 /* verilator lint_on BLKSEQ */
 

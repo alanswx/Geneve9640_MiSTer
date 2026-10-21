@@ -39,6 +39,8 @@ module geneve_core #(
     output logic        vga_dhclk,     // dot clock enables of the VDP
     output logic        vga_dlclk,
     output logic        vga_de,        // display window
+    output logic [15:0] dbg_vdp,
+    output logic [15:0] dbg_vdpw,      // VDP write requests (count) | last byte written to port 1
 
     // Audio
     output logic [7:0]  sound,
@@ -340,6 +342,13 @@ logic [7:0]  vram_hi [0:65535];
 
 assign vdp_int = !vdp_int_n;
 
+always_ff @(posedge clk) begin
+    if (vdp_req && vdp_wrt) begin
+        dbg_vdpw[15:8] <= dbg_vdpw[15:8] + 8'd1;
+        if (vdp_port == 2'd1) dbg_vdpw[7:0] <= vdp_dbo;
+    end
+end
+
 // 9901 P1 = 1 resets the VDP (MAME VDP_reset -> v99x8 reset_line: a reset on assertion)
 logic vdp_reset_pulse;
 always_ff @(posedge clk)
@@ -354,7 +363,7 @@ VDP vdp_i (
     .VDPSPEEDMODE(1'b0), .RATIOMODE(3'b000), .CENTERYJK_R25_N(1'b0),
     .PVIDEOR(vga_r), .PVIDEOG(vga_g), .PVIDEOB(vga_b),
     .PVIDEOHS_N(vga_hs_n), .PVIDEOVS_N(vga_vs_n), .PVIDEOCS_N(),
-    .PVIDEODHCLK(vga_dhclk), .PVIDEODLCLK(vga_dlclk), .BLANK_O(), .PVIDEODE(vga_de),
+    .PVIDEODHCLK(vga_dhclk), .PVIDEODLCLK(vga_dlclk), .BLANK_O(), .PVIDEODE(vga_de), .PDEBUG(dbg_vdp),
     .DISPRESO(1'b0), .NTSC_PAL_TYPE(1'b1), .FORCED_V_MODE(1'b0), .LEGACY_VGA(1'b0),
     .VDP_ID(5'b00000), .OFFSET_Y(7'd0)
 );
@@ -411,7 +420,7 @@ wd1770 #(.CLK_HZ(CLK_HZ)) wdc (
 typedef enum logic [2:0] { B_IDLE, B_READ, B_WRITE, B_VDP, B_DRAM, B_ACK } bstate_t;
 bstate_t     bst;
 logic [7:0]  rdval;
-logic        pend_write, pend_read;
+logic        pend_write;
 
 always_ff @(posedge clk) begin
     logic [7:0] v;
@@ -430,12 +439,10 @@ always_ff @(posedge clk) begin
     if (reset) begin
         bst <= B_IDLE;
         pend_write <= 1'b0;
-        pend_read <= 1'b0;
         fdc_latch <= 8'd0;
     end else begin
         // The GA decodes on bus_as; the access itself happens one clk later.
         pend_write <= bus_as && bus_we && !bus_onchip;
-        pend_read  <= bus_rs;
 
         if (pend_write) begin
             // MAME memwrite: all selected devices take the byte
@@ -461,7 +468,8 @@ always_ff @(posedge clk) begin
             end
         end
 
-        if (pend_read) begin
+        // Reads: the decode is long stable when the read phase comes, so answer at once
+        if (bus_rs) begin
             if (func == F_VIDEO && dec_read) begin
                 vdp_req <= 1'b1;
                 vdp_wrt <= 1'b0;

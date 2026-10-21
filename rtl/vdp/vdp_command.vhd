@@ -97,6 +97,7 @@ ENTITY VDP_COMMAND IS
         PSXTMP              : OUT   STD_LOGIC_VECTOR( 10 DOWNTO 0 );    -- S#8, S#9
 
         CUR_VDP_COMMAND     : OUT   STD_LOGIC_VECTOR(  7 DOWNTO 4 );
+        PSTATE              : OUT   STD_LOGIC_VECTOR(  3 DOWNTO 0 );    -- Geneve9640_MiSTer: debug
 
         REG_R25_CMD         : IN    STD_LOGIC
     );
@@ -186,6 +187,7 @@ BEGIN
     PVRAMWRDATA     <=  VRAMWRDATA;
     PCLR            <=  CLR;
     PCE             <=  CE;
+    PSTATE          <=  CONV_STD_LOGIC_VECTOR( TYPSTATE'POS(STATE), 4 );
     PBD             <=  BD;
     PTR             <=  TR;
     PSXTMP          <=  SXTMP;

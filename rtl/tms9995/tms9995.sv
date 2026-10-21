@@ -1503,7 +1503,8 @@ always_ff @(posedge clk) begin
                 cont = C_NONE;
             end
             epilogue();
-        end else if (!waiting && pend == 6'd0 && rsamp == 2'd0 && !in_reset) begin
+        end else if (!waiting && pend == 6'd0 && (rsamp == 2'd0 || !check_ready) && !in_reset) begin
+            // READY matters only for the wait state check after an external access
             if (check_ready && !m_ready)
                 pend = 6'd1;          // wait state
             else begin
@@ -1512,11 +1513,8 @@ always_ff @(posedge clk) begin
             end
         end
     end
-end
-/* verilator lint_on BLKSEQ */
 
-
-always_ff @(posedge clk) begin
+    // Ports: registered copies of this clk's results (same edge in simulation and hardware)
     bus_as <= bus_as_v;      bus_rs <= bus_rs_v;      bus_we <= bus_we_v;
     bus_dbin <= bus_dbin_v;  bus_iaq <= bus_iaq_v;    bus_onchip <= bus_onchip_v;
     bus_addr <= bus_addr_v;  bus_dout <= bus_dout_v;
@@ -1526,5 +1524,8 @@ always_ff @(posedge clk) begin
     dbg_ir <= dbg_ir_v;      dbg_op1 <= dbg_op1_v;    dbg_op2 <= dbg_op2_v;
     dbg_cycles <= cycles;
 end
+/* verilator lint_on BLKSEQ */
+
+
 
 endmodule

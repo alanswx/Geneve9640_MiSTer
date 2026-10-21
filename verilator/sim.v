@@ -105,7 +105,7 @@ geneve_core core (
    .dram_req(dram_req), .dram_we(dram_we), .dram_addr(dram_addr), .dram_wdata(dram_wdata),
    .dram_rdata(dram_rdata), .dram_ack(dram_ack),
    .vga_r(vga_r), .vga_g(vga_g), .vga_b(vga_b), .vga_hs_n(vga_hs_n), .vga_vs_n(vga_vs_n),
-   .vga_dhclk(vga_dhclk), .vga_dlclk(vga_dlclk), .vga_de(vga_de),
+   .vga_dhclk(vga_dhclk), .vga_dlclk(vga_dlclk), .vga_de(vga_de), .dbg_vdp(), .dbg_vdpw(),
    .sound(sound),
    .kbd_strobe(kbd_strobe), .kbd_code(kbd_code),
    .joy1(joy1), .joy2(joy2),

@@ -279,9 +279,10 @@ assign LED_DISK = {1'b0, disk_busy};
 /////////////////  DEBUG UART  //////////////////
 
 // Every 0.1 s on UART TX (/dev/ttyS1 on the HPS, 115200 baud), 16 hex digits:
-// PC | DRAM requests | DRAM acks | CPU cycles[31:16] | ROM bytes/256 | flags
+// PC | VDP debug (CE, cmd WR req/ack, RD req/ack, DOTSTATE, 0, cmd state, cmd) | CPU cycles[31:16] | ROM bytes/256 | flags
 wire [15:0] dbg_pc;
 wire [63:0] dbg_cycles;
+wire [15:0] dbg_vdp, dbg_vdpw;
 reg   [7:0] dbg_dreq, dbg_dack, dbg_rom;
 always @(posedge clk_sys) begin
 	if (dram_req) dbg_dreq <= dbg_dreq + 1'd1;
@@ -293,7 +294,7 @@ end
 dbg_uart #(.CLK_HZ(21477272), .PERIOD(2147727)) dbg_uart
 (
 	.clk(clk_sys),
-	.value({dbg_pc, dbg_dreq, dbg_dack, dbg_cycles[31:16], dbg_rom,
+	.value({dbg_pc, dbg_vdp, dbg_vdpw, dbg_rom,
 	        reset, pll_locked, ioctl_download, disk_busy, fdc_ready, 2'b00}),
 	.tx(UART_TXD)
 );
@@ -317,7 +318,7 @@ geneve_core core
 	.dram_rdata(dram_rdata), .dram_ack(dram_ack),
 
 	.vga_r(r), .vga_g(g), .vga_b(b), .vga_hs_n(hs_n), .vga_vs_n(vs_n),
-	.vga_dhclk(dhclk), .vga_dlclk(), .vga_de(de),
+	.vga_dhclk(dhclk), .vga_dlclk(), .vga_de(de), .dbg_vdp(dbg_vdp), .dbg_vdpw(dbg_vdpw),
 
 	.sound(sound),
 

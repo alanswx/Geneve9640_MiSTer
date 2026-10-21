@@ -289,6 +289,7 @@ ENTITY VDP IS
 
         BLANK_O             : OUT   STD_LOGIC;
         PVIDEODE            : OUT   STD_LOGIC;      -- Geneve9640_MiSTer: display window (as MSX_MiSTer)
+        PDEBUG              : OUT   STD_LOGIC_VECTOR( 15 DOWNTO 0 );    -- Geneve9640_MiSTer: debug
 
         -- DISPLAY RESOLUTION (0=15kHz, 1=31kHz)
         DISPRESO            : IN    STD_LOGIC;
@@ -505,6 +506,7 @@ ARCHITECTURE RTL OF VDP IS
             PSXTMP              : OUT   STD_LOGIC_VECTOR( 10 DOWNTO 0 );    -- S#8, S#9
 
             CUR_VDP_COMMAND     : OUT   STD_LOGIC_VECTOR(  7 DOWNTO 4 );
+            PSTATE              : OUT   STD_LOGIC_VECTOR(  3 DOWNTO 0 );
 
             REG_R25_CMD         : IN    STD_LOGIC
         );
@@ -948,6 +950,7 @@ ARCHITECTURE RTL OF VDP IS
     SIGNAL VDPCMDCLR                    : STD_LOGIC_VECTOR(  7 DOWNTO 0 );  -- R44, S#7
     -- VDP COMMAND SIGNALS - CAN BE READ BY CPU
     SIGNAL VDPCMDCE                     : STD_LOGIC;                        -- S#2 (BIT 0)
+    SIGNAL VDPCMDSTATE                  : STD_LOGIC_VECTOR(  3 DOWNTO 0 );
     SIGNAL VDPCMDBD                     : STD_LOGIC;                        -- S#2 (BIT 4)
     SIGNAL VDPCMDTR                     : STD_LOGIC;                        -- S#2 (BIT 7)
     SIGNAL VDPCMDSXTMP                  : STD_LOGIC_VECTOR( 10 DOWNTO 0 );  -- S#8, S#9
@@ -1077,6 +1080,8 @@ BEGIN
     );
 
     PVIDEODE    <=  BWINDOW;
+    PDEBUG      <=  VDPCMDCE & VDPCMDVRAMWRREQ & VDPCMDVRAMWRACK & VDPCMDVRAMRDREQ & VDPCMDVRAMRDACK
+                    & DOTSTATE & '0' & VDPCMDSTATE & CUR_VDP_COMMAND;
 
     -- CHANGE DISPLAY MODE BY EXTERNAL INPUT PORT.
     PVIDEOR     <=  IVIDEOR_NTSC_PAL WHEN( DISPMODEVGA = '0' )ELSE
@@ -1821,6 +1826,7 @@ BEGIN
         PTR                 => VDPCMDTR             ,
         PSXTMP              => VDPCMDSXTMP          ,
         CUR_VDP_COMMAND     => CUR_VDP_COMMAND      ,
+        PSTATE              => VDPCMDSTATE          ,
         REG_R25_CMD         => REG_R25_CMD
     );
 
