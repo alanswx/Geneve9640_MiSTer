@@ -29,7 +29,7 @@ tools/mkbootrom.py boot.rom genbt100.bin ddcc1.u3 genbt200.bin idesram.bin
 | Part | Source |
 |---|---|
 | `genbt100.bin`, `genbt200.bin` | MAME `geneve.zip` (boot EPROMs 1.00 and 2.00) |
-| `ddcc1.u3` | MAME `ddcc1.zip` (Myarc DDCC-1 DSR) |
+| `ddcc1.u3` | MAME `ti99_ddcc1.zip` (Myarc DDCC-1 DSR) |
 | `idesram.bin` | `tools/mkidesram.py IDEDSR14.dsk idesram.bin` (Fred Kaal's IDE DSR v14, see SOURCES.md) |
 
 A 24 KiB `boot.rom` (`genbt100.bin` + `ddcc1.u3` only) also works if boot ROM 2.00 and the IDE card are not
