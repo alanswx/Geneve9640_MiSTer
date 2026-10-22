@@ -10,7 +10,14 @@
 - **MiSTer**: `Geneve.sv` builds with Quartus 17 (57 % ALMs, 38 % BRAM, timing met). On mister126 it boots
   MDOS 6.50 from `MDOS650.dsk` to `A:\>` with the MiSTer RTC time; PS/2 keyboard works (`DIR`).
   Debug UART: 16 hex digits every 0.1 s on /dev/ttyS1 (PC | VDP command debug | VDP writes | ROM | flags).
-- CPU speed: about 92 % of 3 MHz in the sim (handshake clocks per byte); to be improved.
+- CPU speed: full 3 MHz (DRAM read-ahead at the address phase, posted writes); no lost CLKOUT ticks in the sim.
+- Tested (sim, and board where noted): MDOS 6.50/6.70/7.45 from floppy; two disks from one MGL (board);
+  MIXPIC G7 picture (board); HIMIX3, BATWIND, BOXER, SFXER same as MAME; GPL 7.40 TI mode: module menu,
+  Scott Adams' Adventure cartridge, TI BASIC; CALL SOUND(2000,440,0) = 440 Hz for 2.0 s (sim and board).
+- MDOS's floppy driver uses 40 tracks unless configured (GENCFG): keep test files below track 40.
+- Hard disk: boot ROM 2.00 boots IDE1.LOAD-IDE through the IDE card's DSR, which is Nouspikel's IDEAL
+  firmware in the card's SRAM (not in the downloads; MAME's card has none). HFDC and WHT SCSI DSRs are in
+  the MAME ROM sets. tools/timt/MakeIDE.java creates IDE images with TIImageTool's code (see below).
 
 ## Layout
 
@@ -25,6 +32,9 @@
 | `verilator/` | headless sim: `make`, `./obj_dir_headless/Vtop --dsk1 X.dsk --frames 1500 --screenshot 1500` |
 | `tools/tracecmp.py` | compare a sim trace (`--trace`) with a MAME debugger trace |
 | `tools/remote_sync.sh`, `tools/kvms.sh` | copy tracked files to misterubuntu; MiSTerKVMS CLI for mister126 |
+| `tools/tidsk.py` | V9T9 floppy images: list, extract, new image, add TIFILES / DIS/VAR 80 files |
+| `tools/compare_run.sh` | the same MDOS session (AUTOEXEC) in MAME and the sim, screenshots side by side |
+| `tools/timt/MakeIDE.java` | IDE image creation with TIImageTool's classes (compile TIImageTool from emulators/tiimagetool with the RXTX jar + a gnu.io.DriverManager stub) |
 
 `docs/`, `software/`, `emulators/`, `fpga_refs/` are local research material (gitignored).
 
