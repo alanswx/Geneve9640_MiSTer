@@ -65,6 +65,7 @@ localparam CONF_STR = {
 	"O[3],Boot ROM,1.00,2.00;",
 	"O[4],IDE card (CRU 1000),Off,On;",
 	"O[5],Video RAM,128K,192K;",
+	"O[6],Speech synthesizer,On,Off;",
 	"-;",
 	"O[122:121],Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
 	"-;",
@@ -360,18 +361,20 @@ dbg_uart #(.CLK_HZ(21477272), .PERIOD(2147727)) dbg_uart
 wire [5:0] r, g, b;
 wire       hs_n, vs_n, dhclk, de;
 wire [7:0] sound;
+wire signed [7:0] speech;
 
 geneve_core core
 (
 	.clk(clk_sys),
 	.reset(reset),
 
-	.rom_wr(ioctl_download && ioctl_wr && ioctl_index == 16'd0 && ioctl_addr < 27'ha000),
-	.rom_addr(ioctl_addr[15:0]),
+	.rom_wr(ioctl_download && ioctl_wr && ioctl_index == 16'd0 && (ioctl_addr < 27'ha000 || (ioctl_addr >= 27'h90000 && ioctl_addr < 27'h98000))),
+	.rom_addr(ioctl_addr[19:0]),
 	.rom_data(ioctl_dout),
 	.boot200(status[3]),
 	.ide_en(status[4]),
 	.vram192(status[5]),
+	.speech_en(~status[6]),
 
 	.dram_req(dram_req), .dram_we(dram_we), .dram_addr(dram_addr), .dram_wdata(dram_wdata),
 	.dram_rdata(dram_rdata), .dram_ack(dram_ack),
@@ -379,7 +382,7 @@ geneve_core core
 	.vga_r(r), .vga_g(g), .vga_b(b), .vga_hs_n(hs_n), .vga_vs_n(vs_n),
 	.vga_dhclk(dhclk), .vga_dlclk(), .vga_de(de), .dbg_vdp(dbg_vdp), .dbg_vdpw(dbg_vdpw),
 
-	.sound(sound),
+	.sound(sound), .speech(speech),
 
 	.kbd_strobe(kbd_strobe), .kbd_code(kbd_code),
 	.joy1({joystick_0[3], joystick_0[2], joystick_0[0], joystick_0[1], joystick_0[4]}),
@@ -424,7 +427,8 @@ assign VGA_HS = hso;
 assign VGA_VS = vso;
 assign VGA_DE = deo;
 
-assign AUDIO_L = {1'b0, sound, 7'd0};
+// sound chip (unsigned) and speech (signed, centred), half each
+assign AUDIO_L = {2'b00, sound, 6'd0} + {1'b0, ~speech[7], speech[6:0], 6'd0};
 assign AUDIO_R = AUDIO_L;
 
 reg [26:0] act_cnt;

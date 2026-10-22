@@ -22,7 +22,8 @@ VDP_SRC = $(addprefix $(RTL)/vdp/, vdp_package.vhd vdp_ram.vhd vdp_linebuf.vhd v
 	vdp_ntsc_pal.vhd vdp_hvcounter.vhd vdp_interrupt.vhd vdp_ssg.vhd vdp_colordec.vhd vdp_text12.vhd \
 	vdp_graphic123m.vhd vdp_graphic4567.vhd vdp_spinforam.vhd vdp_sprite.vhd vdp_register.vhd \
 	vdp_command.vhd vdp_wait_control.vhd vdp.vhd)
-GEN_V = $(GEN)/vdp.v
+SPEECH_SRC = $(addprefix $(RTL)/speech/, plc10_speech_synthetizer.vhd tms5220.vhd tms6100.vhd geneve_speech.vhd)
+GEN_V = $(GEN)/vdp.v $(GEN)/speech.v
 
 V_SRC = sim.v $(RTL)/geneve_core.sv $(RTL)/tms9995/tms9995.sv $(RTL)/geneve_ga.sv $(RTL)/tms9901.sv \
 	$(RTL)/mm58274.sv $(RTL)/wd1770.sv $(RTL)/ata_disk.sv $(RTL)/sn76496/sn76496.v $(GEN_V)
@@ -57,6 +58,17 @@ $(GEN)/vdp.v: $(WORK)/.analysed fix_port_aliases.py
 	python3 fix_port_aliases.py $@.tmp $(GEN)/vdp_netlist.vhd
 	@# The VRAM data output is tri-stated in the VHDL; the netlist drives 0 instead.
 	perl -pi -e "s/(\\d+)'b[Zz]+\\b/\$${1}'b0/g" $@.tmp
+	@mv $@.tmp $@
+
+# The speech synthesizer (VHDL, rtl/speech) the same way
+$(WORK)/.speech: $(SPEECH_SRC) Makefile
+	@mkdir -p $(WORK)
+	$(GHDL) -a $(GHDL_FLAGS) $(SPEECH_SRC)
+	@touch $@
+
+$(GEN)/speech.v: $(WORK)/.speech
+	@mkdir -p $(GEN)
+	$(GHDL) synth $(GHDL_FLAGS) --out=verilog geneve_speech > $@.tmp
 	@mv $@.tmp $@
 
 netlist: $(GEN_V)

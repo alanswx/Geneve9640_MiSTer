@@ -31,6 +31,8 @@ struct Options {
     std::string ide, ide_sram;             // --ide IMAGE, --ide-sram FILE: IDE card with disk and SRAM
     bool        ide_log = false;
     bool        vram192 = false;               // --vram192: 64 KiB V9938 expansion RAM
+    std::string speech;                    // --speech ROM: speech synthesizer with this 32 KiB ROM
+    std::string speech_wav;                // --speech-wav FILE: the speech output alone
     std::string dsk[2];
     bool        dsk_readonly = false;
     uint32_t    frames = 60;
@@ -65,6 +67,8 @@ static void usage()
 "  --ide IMAGE            IDE card at CRU >1000 with this disk (512-byte sector dump; written back)\n"
 "  --ide-sram FILE        IDE card SRAM contents (Kaal's IDE DSR, tools/mkidesram.py); --ide-log\n"
 "  --vram192              192 KiB video RAM (V9938 expansion RAM)\n"
+"  --speech ROM           speech synthesizer with this 32 KiB ROM (cd2325a.vsm + cd2326a.vsm)\n"
+"  --speech-wav FILE      WAV of the speech synthesizer output alone\n"
 "  --frames N             stop after N video frames (default 60)\n"
 "  --cycles N             stop after N CPU cycles\n"
 "  --screenshot N         PNG of frame N (repeatable); --dump-every K: every Kth frame\n"
@@ -423,7 +427,7 @@ int Sim::run()
         }
 
     FILE *trace = opt.trace_file.empty() ? nullptr : fopen(opt.trace_file.c_str(), "w");
-    std::vector<int16_t> wav;
+    std::vector<int16_t> wav, swav;
     double wav_acc = 0;
     FILE *vdplog = opt.vdp_log.empty() ? nullptr : fopen(opt.vdp_log.c_str(), "w");
 
@@ -443,6 +447,15 @@ int Sim::run()
     top->boot200 = !rom2.empty();
     top->ide_en = !opt.ide.empty() || !isram.empty();
     top->vram192 = opt.vram192;
+    std::vector<uint8_t> sprom;
+    if (!opt.speech.empty() && (!load_file(opt.speech, sprom) || sprom.size() != 32768)) { fprintf(stderr, "cannot load speech ROM %s\n", opt.speech.c_str()); return 1; }
+    top->speech_en = !sprom.empty();
+    for (size_t i = 0; i < sprom.size(); i++) {
+        top->rom_wr = 1;
+        top->rom_addr = 0x90000 + i;
+        top->rom_data = sprom[i];
+        tick();
+    }
     for (int i = 0; i < 16384 + 8192; i++) {
         top->rom_wr = 1;
         top->rom_addr = i;
@@ -492,11 +505,12 @@ int Sim::run()
 #endif
         idedisk();
 
-        if (!opt.wav_file.empty()) {
+        if (!opt.wav_file.empty() || !opt.speech_wav.empty()) {
             wav_acc += 48000.0;
             if (wav_acc >= CLK_HZ) {
                 wav_acc -= CLK_HZ;
-                wav.push_back((int16_t)((int)top->sound * 128 - 16384));
+                swav.push_back((int16_t)((int)(int8_t)top->speech * 256));
+                wav.push_back((int16_t)((int)top->sound * 64 + (int)(int8_t)top->speech * 64 - 8192));
             }
         }
 
@@ -549,8 +563,8 @@ int Sim::run()
         if (Verilated::gotFinish()) break;
     }
     if (trace) fclose(trace);
-    if (!opt.wav_file.empty()) {
-        FILE *f = fopen(opt.wav_file.c_str(), "wb");
+    auto write_wav = [](const std::string &fn, const std::vector<int16_t> &wav) {
+        FILE *f = fopen(fn.c_str(), "wb");
         if (f) {
             uint32_t n = wav.size() * 2;
             auto w32 = [&](uint32_t v) { fwrite(&v, 4, 1, f); };
@@ -561,7 +575,9 @@ int Sim::run()
             fwrite(wav.data(), 2, wav.size(), f);
             fclose(f);
         }
-    }
+    };
+    if (!opt.wav_file.empty()) write_wav(opt.wav_file, wav);
+    if (!opt.speech_wav.empty()) write_wav(opt.speech_wav, swav);
 
     if (ide.dirty) {
         FILE *f = fopen(ide.name.c_str(), "wb");
@@ -595,6 +611,8 @@ int main(int argc, char **argv)
         else if (a == "--ide-sram") o.ide_sram = next();
         else if (a == "--ide-log") o.ide_log = true;
         else if (a == "--vram192") o.vram192 = true;
+        else if (a == "--speech") o.speech = next();
+        else if (a == "--speech-wav") o.speech_wav = next();
         else if (a == "--dsk1") o.dsk[0] = next();
         else if (a == "--dsk2") o.dsk[1] = next();
         else if (a == "--dsk-readonly") o.dsk_readonly = true;

@@ -14,6 +14,7 @@ module top(
    input         boot200,
    input         ide_en,
    input         vram192,
+   input         speech_en,
 
    // IDE disk image: hps_io sd_* of one drive
    input         ide_mounted,
@@ -36,6 +37,7 @@ module top(
    output        vga_dlclk /*verilator public_flat*/,
    output        vga_de /*verilator public_flat*/,
    output  [7:0] sound,
+   output  [7:0] speech,
 
    input         kbd_strobe,
    input   [7:0] kbd_code,
@@ -119,7 +121,7 @@ reg dram_we_r;
 reg [7:0] dram_wd_r;
 wire [19:0] sram_load_a = rom_addr - 20'h10000 + 20'h80000;
 always @(posedge clk) begin
-   if (rom_wr && rom_addr >= 20'h10000) dram[sram_load_a] <= rom_data;
+   if (rom_wr && rom_addr >= 20'h10000 && rom_addr < 20'h90000) dram[sram_load_a] <= rom_data;
    dram_ack <= 1'b0;
    if (dram_req) begin
       dram_cnt <= `DRAM_LAT;
@@ -198,13 +200,13 @@ assign sd_buff_din0 = 0; assign sd_buff_din1 = 0;
 
 geneve_core core (
    .clk(clk), .reset(reset),
-   .rom_wr(rom_wr && rom_addr < 20'h0a000), .rom_addr(rom_addr[15:0]), .rom_data(rom_data),
-   .boot200(boot200), .ide_en(ide_en), .vram192(vram192),
+   .rom_wr(rom_wr && (rom_addr < 20'h0a000 || (rom_addr >= 20'h90000 && rom_addr < 20'h98000))), .rom_addr(rom_addr), .rom_data(rom_data),
+   .boot200(boot200), .ide_en(ide_en), .vram192(vram192), .speech_en(speech_en),
    .dram_req(dram_req), .dram_we(dram_we), .dram_addr(dram_addr), .dram_wdata(dram_wdata),
    .dram_rdata(dram_rdata), .dram_ack(dram_ack),
    .vga_r(vga_r), .vga_g(vga_g), .vga_b(vga_b), .vga_hs_n(vga_hs_n), .vga_vs_n(vga_vs_n),
    .vga_dhclk(vga_dhclk), .vga_dlclk(vga_dlclk), .vga_de(vga_de), .dbg_vdp(), .dbg_vdpw(),
-   .sound(sound),
+   .sound(sound), .speech(speech),
    .kbd_strobe(kbd_strobe), .kbd_code(kbd_code),
    .joy1(joy1), .joy2(joy2),
    .mouse_stb(mouse_stb), .mouse_dx(mouse_dx), .mouse_dy(mouse_dy), .mouse_btn(mouse_btn),

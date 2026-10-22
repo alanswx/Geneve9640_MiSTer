@@ -34,3 +34,7 @@ set_global_assignment -name QIP_FILE rtl/pll.qip
 set_global_assignment -name SDC_FILE Geneve.sdc
 set_global_assignment -name SYSTEMVERILOG_FILE Geneve.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/dbg_uart.sv
+set_global_assignment -name VHDL_FILE rtl/speech/plc10_speech_synthetizer.vhd
+set_global_assignment -name VHDL_FILE rtl/speech/tms6100.vhd
+set_global_assignment -name VHDL_FILE rtl/speech/tms5220.vhd
+set_global_assignment -name VHDL_FILE rtl/speech/geneve_speech.vhd

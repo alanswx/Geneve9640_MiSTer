@@ -3,8 +3,8 @@
 //
 //  TMS9995 CPU, Gate Array + PAL, TMS9901, V9938 (ESE VDP), SN76496,
 //  MM58274 RTC, 32+32 KiB SRAM, 16 KiB boot EPROM (1.00 or 2.00), 128 KiB
-//  VRAM, and the peripheral box with a Myarc DDCC-1 floppy controller and a
-//  Nouspikel IDE card. The 512 KiB DRAM and the IDE card's 512 KiB SRAM are
+//  VRAM, and the peripheral box with a Myarc DDCC-1 floppy controller, a
+//  Nouspikel IDE card and the TI speech synthesizer (on its PEB adapter). The 512 KiB DRAM and the IDE card's 512 KiB SRAM are
 //  outside (dram_* port), so the MiSTer top can put them in SDRAM.
 //
 //  Board behaviour follows MAME's geneve.cpp / genboard.cpp (Michael Zapf).
@@ -18,13 +18,15 @@ module geneve_core #(
     input  logic        clk,
     input  logic        reset,
 
-    // ROM download: 0000-3FFF boot EPROM 1.00, 4000-5FFF DDCC-1 DSR, 6000-9FFF boot EPROM 2.00
+    // ROM download: 0000-3FFF boot EPROM 1.00, 4000-5FFF DDCC-1 DSR, 6000-9FFF boot EPROM 2.00,
+    // 90000-97FFF speech ROM (TMS6100 pair)
     input  logic        rom_wr,
-    input  logic [15:0] rom_addr,
+    input  logic [19:0] rom_addr,
     input  logic [7:0]  rom_data,
     input  logic        boot200,       // run boot EPROM 2.00
     input  logic        ide_en,        // IDE card at CRU >1000
     input  logic        vram192,       // 64 KiB V9938 expansion RAM (R#45 MXC/MXS/MXD), 192 KiB in all
+    input  logic        speech_en,     // speech synthesizer in the box
 
     // DRAM (512 KiB) at 00000-7FFFF, IDE card SRAM (512 KiB) at 80000-FFFFF:
     // one request at a time, answered with dram_ack
@@ -49,6 +51,7 @@ module geneve_core #(
 
     // Audio
     output logic [7:0]  sound,
+    output logic signed [7:0] speech,
 
     // Keyboard: XT scancodes (make/break), one per strobe; the core buffers them
     input  logic        kbd_strobe,
@@ -317,16 +320,17 @@ always_ff @(posedge clk) begin
 end
 
 // one write port (block RAM): 1.00 from 0000-3FFF, 2.00 from 6000-9FFF
-wire [15:0] rom_addr2 = rom_addr - 16'h6000;
-wire        eprom_we = rom_wr && (rom_addr < 16'h4000 || (rom_addr >= 16'h6000 && rom_addr < 16'ha000));
-wire [14:0] eprom_wa = (rom_addr < 16'h4000) ? {1'b0, rom_addr[13:0]} : {1'b1, rom_addr2[13:0]};
+wire [15:0] rom_addr2 = rom_addr[15:0] - 16'h6000;
+wire        rom_lo   = rom_addr[19:16] == 4'd0;
+wire        eprom_we = rom_wr && rom_lo && (rom_addr[15:0] < 16'h4000 || (rom_addr[15:0] >= 16'h6000 && rom_addr[15:0] < 16'ha000));
+wire [14:0] eprom_wa = (rom_addr[15:0] < 16'h4000) ? {1'b0, rom_addr[13:0]} : {1'b1, rom_addr2[13:0]};
 always_ff @(posedge clk) begin
     if (eprom_we) eprom[eprom_wa] <= rom_data;
     eprom_q <= eprom[{boot200, physpage[0], bus_addr[12:0]}];
 end
 
 always_ff @(posedge clk) begin
-    if (rom_wr && rom_addr[15:13] == 3'b010) dsr[rom_addr[12:0]] <= rom_data;
+    if (rom_wr && rom_lo && rom_addr[15:13] == 3'b010) dsr[rom_addr[12:0]] <= rom_data;
     dsr_q <= dsr[{fdc_latch[3], box_addr[11:0]}];
 end
 
@@ -536,6 +540,33 @@ ata_disk ata (
     .busy(ide_busy)
 );
 
+//----------------------------------------------------------------------------
+// Peripheral box: speech synthesizer on its PEB adapter (MAME ti99_speechconn,
+// address extension decoded): reads at 9000, writes at 9400 (even addresses).
+// A write waits (no ack) while the TMS5220's FIFO is full, as READY would.
+//----------------------------------------------------------------------------
+logic [7:0]  speech_rom [0:32767];
+logic [7:0]  speech_rom_q, speech_din, speech_dout;
+logic [14:0] speech_rom_a;
+logic        speech_rs_n, speech_ws_n, speech_ready_n;
+logic        speech_wpend;
+
+wire speech_sel = speech_en && box_sel && box_addr[15:11] == 5'b10010 && !box_addr[0];
+wire speech_rd  = speech_sel && !box_addr[10];
+wire speech_wr  = speech_sel && box_addr[10];
+
+always_ff @(posedge clk) begin
+    if (rom_wr && rom_addr[19:15] == 5'b10010) speech_rom[rom_addr[14:0]] <= rom_data;
+    speech_rom_q <= speech_rom[speech_rom_a];
+end
+
+geneve_speech speech_i (               // CLK_HALF 21 (default): 21.477 MHz / 42 = 511 kHz
+    .clk(clk), .reset(reset), .model(2'd1),           // TMS5200 (CD2501E, as in the TI speech synthesizer)
+    .rs_n(speech_rs_n), .ws_n(speech_ws_n), .din(speech_din), .dout(speech_dout),
+    .ready_n(speech_ready_n), .aout(speech),
+    .rom_addr(speech_rom_a), .rom_data(speech_rom_q)
+);
+
 // DRAM-like accesses (through SDRAM): the DRAM proper and the IDE card SRAM
 wire        mem_sel  = (func == F_DRAM || func == F_GROM) || ide_sram;
 wire        mem_wsel = (func == F_DRAM || func == F_GROM) || (ide_sram && !ide_q[5]);
@@ -577,6 +608,8 @@ always_ff @(posedge clk) begin
     fdcram_we <= 1'b0;
     ata_rd <= 1'b0;
     ata_wr <= 1'b0;
+    speech_rs_n <= 1'b1;
+    speech_ws_n <= 1'b1;
 
     if (reset) begin
         bst <= B_IDLE;
@@ -585,6 +618,7 @@ always_ff @(posedge clk) begin
         fdc_latch <= 8'd0;
         ide_q <= 8'd0;
         ide_page <= 6'd0;
+        speech_wpend <= 1'b0;
         dbusy <= 1'b0;
         dbusy_rd <= 1'b0;
         pf_valid <= 1'b0;
@@ -612,6 +646,7 @@ always_ff @(posedge clk) begin
                 if (ide_sram && ide_q[2]) ide_page <= box_addr[6:1];
             end else begin
                 if (ide_sram && ide_q[2]) ide_page <= box_addr[6:1];
+                if (speech_wr) speech_din <= bus_dout;
                 if (ide_ata) begin
                     if (!box_addr[0])
                         ide_wlatch[7:0] <= bus_dout;
@@ -628,8 +663,15 @@ always_ff @(posedge clk) begin
                 if (func == F_SRAM || func == F_SRAMX) sram_we <= 1'b1;
                 if (ddcc_ram) fdcram_we <= 1'b1;
                 if (ddcc_fdc) wd_wr <= 1'b1;
-                bus_ack <= 1'b1;
+                if (speech_wr) speech_wpend <= 1'b1;     // acked when the FIFO takes it (below)
+                else bus_ack <= 1'b1;
             end
+        end
+
+        if (speech_wpend && !speech_ready_n) begin
+            speech_ws_n <= 1'b0;
+            speech_wpend <= 1'b0;
+            bus_ack <= 1'b1;
         end
 
         // Reads: the decode is long stable when the read phase comes, so answer at once
@@ -664,6 +706,10 @@ always_ff @(posedge clk) begin
                     wd_rd <= 1'b1;
                 end
                 if (ide_rtc) v = bq4847(box_addr[4:1]);
+                if (speech_rd) begin
+                    v = speech_dout;
+                    speech_rs_n <= 1'b0;
+                end
                 if (ide_ata) begin
                     if (!box_addr[0]) begin
                         // first access: the 16-bit read (not in the write half: read-before-write)
