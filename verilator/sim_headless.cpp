@@ -59,6 +59,7 @@ static void usage()
 "  --trace FILE           instruction trace: cycles WP ST PC: IR\n"
 "  --trace-from C / --trace-to C   CPU cycle window for the trace\n"
 "  --xt FRAME:HEX[,HEX..] XT scancodes into the keyboard at FRAME\n"
+"  --type FRAME:TEXT      type TEXT (US layout, \\n = Enter) from FRAME\n"
 "  --quiet\n");
 }
 
@@ -79,6 +80,46 @@ static bool load_file(const std::string &name, std::vector<uint8_t> &data)
     size_t got = fread(data.data(), 1, n, f);
     fclose(f);
     return got == (size_t)n;
+}
+
+
+// ASCII -> XT set 1 make codes (US layout); bit 8 = needs shift
+static int xt_code(char c)
+{
+    static const char *row1 = "1234567890-=";
+    static const char *row1s = "!@#$%^&*()_+";
+    static const char *q = "qwertyuiop[]", *a = "asdfghjkl;'", *z = "zxcvbnm,./";
+    static const char *qs = "QWERTYUIOP{}", *as = "ASDFGHJKL:\"", *zs = "ZXCVBNM<>?";
+    const char *p;
+    if (c == '\n') return 0x1c;
+    if (c == ' ') return 0x39;
+    if (c == '\\') return 0x2b;
+    if (c == '|') return 0x12b;
+    if ((p = strchr(row1, c))) return 0x02 + (p - row1);
+    if ((p = strchr(row1s, c))) return 0x102 + (p - row1s);
+    if ((p = strchr(q, c))) return 0x10 + (p - q);
+    if ((p = strchr(qs, c))) return 0x110 + (p - qs);
+    if ((p = strchr(a, c))) return 0x1e + (p - a);
+    if ((p = strchr(as, c))) return 0x11e + (p - as);
+    if ((p = strchr(z, c))) return 0x2c + (p - z);
+    if ((p = strchr(zs, c))) return 0x12c + (p - zs);
+    return -1;
+}
+
+static std::vector<uint8_t> xt_type(const std::string &text)
+{
+    std::vector<uint8_t> v;
+    for (size_t i = 0; i < text.size(); i++) {
+        char c = text[i];
+        if (c == '\\' && i + 1 < text.size() && text[i + 1] == 'n') { c = '\n'; i++; }
+        int k = xt_code(c);
+        if (k < 0) continue;
+        if (k & 0x100) v.push_back(0x2a);
+        v.push_back(k & 0xff);
+        v.push_back((k & 0xff) | 0x80);
+        if (k & 0x100) v.push_back(0xaa);
+    }
+    return v;
 }
 
 struct Disk {
@@ -376,7 +417,7 @@ int Sim::run()
             top->kbd_strobe = 1;
             top->kbd_code = keyq.front();
             keyq.erase(keyq.begin());
-            next_key = clocks + (uint64_t)(CLK_HZ / 50);   // 20 ms apart
+            next_key = clocks + (uint64_t)(CLK_HZ / 100);  // 10 ms apart
         }
 
         if (!opt.quiet && frame != last_report && frame % 50 == 0) {
@@ -427,6 +468,15 @@ int main(int argc, char **argv)
         else if (a == "--pixstats") o.pixstats = true;
         else if (a == "--mount-at") o.mount_at = std::stoul(next());
         else if (a == "--vdp-log") o.vdp_log = next();
+        else if (a == "--type") {
+            std::string t = next();
+            size_t c = t.find(':');
+            if (c == std::string::npos) { fprintf(stderr, "--type wants FRAME:TEXT\n"); return 2; }
+            Options::Key k;
+            k.frame = std::stoul(t.substr(0, c));
+            k.codes = xt_type(t.substr(c + 1));
+            o.keys.push_back(k);
+        }
         else if (a == "--xt") {
             std::string s = next();
             size_t c = s.find(':');

@@ -59,6 +59,7 @@ logic [8:0]  cnt;
 logic        ack_seen;
 logic [31:0] size [2];
 logic [7:0]  vib [0:19];
+logic [1:0]  mount_pend;           // a mount waiting for its geometry read
 
 assign busy = (st != D_IDLE);
 assign sd_buff_din[0] = blk_q;
@@ -80,6 +81,7 @@ always_ff @(posedge clk) begin
         sd_wr <= 2'b00;
         ready <= 2'b00;
         mounting <= 1'b0;
+        mount_pend <= 2'b00;
     end else begin
         // a new image: note the size, then read its first block for the geometry
         for (int d = 0; d < 2; d++)
@@ -87,13 +89,16 @@ always_ff @(posedge clk) begin
                 ready[d] <= 1'b0;
                 size[d] <= img_size[31:0];
                 wprot[d] <= img_readonly;
+                mount_pend[d] <= (img_size != 64'd0);
             end
 
         case (st)
         D_IDLE: begin
-            if (img_mounted[0] && img_size != 64'd0) begin
+            if (mount_pend[0] && !img_mounted[0]) begin
+                mount_pend[0] <= 1'b0;
                 drv <= 1'b0; lsn <= 16'd0; mounting <= 1'b1; st <= D_RDREQ;
-            end else if (img_mounted[1] && img_size != 64'd0) begin
+            end else if (mount_pend[1] && !img_mounted[1]) begin
+                mount_pend[1] <= 1'b0;
                 drv <= 1'b1; lsn <= 16'd0; mounting <= 1'b1; st <= D_RDREQ;
             end else if (img_rd || img_wr) begin
                 drv <= img_drive;

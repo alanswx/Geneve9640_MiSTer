@@ -19,3 +19,4 @@
 /verilator/roms/
 /verilator/*.log
 /verilator/out*/
+/verilator/out_compare/
