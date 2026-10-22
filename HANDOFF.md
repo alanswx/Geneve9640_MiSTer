@@ -15,9 +15,13 @@
   MIXPIC G7 picture (board); HIMIX3, BATWIND, BOXER, SFXER same as MAME; GPL 7.40 TI mode: module menu,
   Scott Adams' Adventure cartridge, TI BASIC; CALL SOUND(2000,440,0) = 440 Hz for 2.0 s (sim and board).
 - MDOS's floppy driver uses 40 tracks unless configured (GENCFG): keep test files below track 40.
-- Hard disk: boot ROM 2.00 boots IDE1.LOAD-IDE through the IDE card's DSR, which is Nouspikel's IDEAL
-  firmware in the card's SRAM (not in the downloads; MAME's card has none). HFDC and WHT SCSI DSRs are in
-  the MAME ROM sets. tools/timt/MakeIDE.java creates IDE images with TIImageTool's code (see below).
+- Hard disk (MAME verified, core not done yet): boot ROM 2.00 (genbt200.bin) boots MDOS 7.45 from an IDE
+  disk with no floppy. Needs: Nouspikel IDE card in Geneve mode at CRU >1000; Fred Kaal's IDE DSR v14
+  (IDEDSR14.dsk; NOT Nouspikel's IDEAL, which has no IDE1 device) in the card's 512K SRAM; on the disk
+  IDE1.LOAD-IDE (the one from BeeryMiller/LOAD-SYS released with genbt200.bin, loads at >A000; the
+  MDOS745DIS copy loads at >2000 and crashes) and IDE1.SYSTEM-SYS. tools/mkideimage.sh builds both the
+  disk (.chd for MAME, .raw for the core) and the SRAM image. Kaal's DSR v18 + sources, DU2K, DM2K:
+  https://hexbus.com/ti99geek/ (mirror of ti99-geek.nl).
 
 ## Layout
 
@@ -34,6 +38,7 @@
 | `tools/remote_sync.sh`, `tools/kvms.sh` | copy tracked files to misterubuntu; MiSTerKVMS CLI for mister126 |
 | `tools/tidsk.py` | V9T9 floppy images: list, extract, new image, add TIFILES / DIS/VAR 80 files |
 | `tools/compare_run.sh` | the same MDOS session (AUTOEXEC) in MAME and the sim, screenshots side by side |
+| `tools/mkideimage.sh`, `tools/mkidesram.py` | IDE disk image (MDOS boot) and IDE card SRAM image with Kaal's DSR |
 | `tools/timt/MakeIDE.java` | IDE image creation with TIImageTool's classes (compile TIImageTool from emulators/tiimagetool with the RXTX jar + a gnu.io.DriverManager stub) |
 
 `docs/`, `software/`, `emulators/`, `fpga_refs/` are local research material (gitignored).
