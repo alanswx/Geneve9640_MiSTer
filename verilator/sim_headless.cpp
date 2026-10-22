@@ -50,6 +50,8 @@ struct Options {
     std::vector<Key> keys;                 // --xt FRAME:HEX,HEX,...
     struct Mouse { uint32_t frame; int dx, dy, btn; };
     std::vector<Mouse> mouse;              // --mouse FRAME:DX,DY,BUTTONS
+    struct Joy { uint32_t frame; int bits; };
+    std::vector<Joy> joy;                  // --joy FRAME:BITS (joystick 1)
 };
 
 static void usage()
@@ -73,6 +75,7 @@ static void usage()
 "  --type FRAME:TEXT      type TEXT (US layout, \\n = Enter) from FRAME\n"
 "  --mouse FRAME:DX,DY,B  bus mouse: move by DX,DY (right/down, -127..127) at FRAME; B = buttons\n"
 "                         (4 left, 2 middle, 1 right), held until the next --mouse\n"
+"  --joy FRAME:BITS       joystick 1 from FRAME: 16 up, 8 down, 4 right, 2 left, 1 fire\n"
 "  --quiet\n");
 }
 
@@ -474,6 +477,7 @@ int Sim::run()
     bool have_prev = false;
     size_t key_i = 0;
     size_t mouse_i = 0;
+    size_t joy_i = 0;
     std::vector<uint8_t> keyq;
     uint64_t next_key = 0;
     uint32_t last_report = 0;
@@ -508,6 +512,10 @@ int Sim::run()
         if (top->dbg_wr && vdplog && ((top->dbg_waddr & 0xfff0) == 0xf100 || (top->dbg_waddr & 0xfc00) == 0x8c00)
             && (top->dbg_waddr & 0x6) != 0)
             fprintf(vdplog, "%u %llu %04X %02X\n", frame, (unsigned long long)top->dbg_cycles, top->dbg_waddr, top->dbg_wdata);
+
+        // joystick
+        while (joy_i < opt.joy.size() && opt.joy[joy_i].frame <= frame)
+            top->joy1 = opt.joy[joy_i++].bits & 0x1f;
 
         // mouse
         top->mouse_stb = 0;
@@ -612,6 +620,11 @@ int main(int argc, char **argv)
             k.frame = std::stoul(t.substr(0, c));
             k.codes = xt_type(t.substr(c + 1));
             o.keys.push_back(k);
+        }
+        else if (a == "--joy") {
+            Options::Joy j{};
+            if (sscanf(next().c_str(), "%u:%d", &j.frame, &j.bits) != 2) { fprintf(stderr, "--joy wants FRAME:BITS\n"); return 2; }
+            o.joy.push_back(j);
         }
         else if (a == "--mouse") {
             std::string v = next();

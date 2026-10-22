@@ -15,6 +15,12 @@
   MIXPIC G7 picture (board); HIMIX3, BATWIND, BOXER, SFXER same as MAME; GPL 7.40 TI mode: module menu,
   Scott Adams' Adventure cartridge, TI BASIC; CALL SOUND(2000,440,0) = 440 Hz for 2.0 s (sim and board).
 - MDOS's floppy driver uses 40 tracks unless configured (GENCFG): keep test files below track 40.
+- Bus mouse (V9938 colour bus, MiSTer PS/2 mouse): 9640 News V1#3 MOUSE80 follows the mouse, right button
+  writes, left exits (sim and board). Sim: --mouse FRAME:DX,DY,BUTTONS.
+- OSD Video RAM 192K: V9938 expansion RAM via R#45 MXC/MXS/MXD (checked in the sim with a small test
+  program; no known software uses it).
+- Floppy FORMAT (MDOS 6.50 FORMAT B:) gives a valid V9T9 image (write track sets the geometry); sim and board.
+- Joystick 1: TI BASIC CALL JOYST gives 4,4 for up+right, 0,-4 for down (sim: --joy FRAME:BITS).
 - IDE hard disk: the core has the Nouspikel IDE card (CRU >1000, Geneve mode, rtl/geneve_core.sv + rtl/ata_disk.sv);
   its 512K SRAM is in SDRAM (dram_addr bit 19) and preloaded from boot.rom. OSD: Boot ROM 1.00/2.00, IDE card
   Off/On, S2 = IDE disk (.hdv/.raw/.img, plain 512-byte sector dump). Sim: `--rom2 roms/genbt200.bin --ide X.raw
@@ -72,6 +78,6 @@ disks `MDOS650.dsk`, `MDOS670b_720k.dsk`; MGL `/media/fat/_Geneve/Geneve MDOS650
 
 ## Next
 
-1. CPU throughput to a full 3 MHz; sound check; joystick check.
+1. Optional: 384K SRAM (MAME "Ultimate" SRAM at pages C0-E7), boot ROM 0.98, speech, RS232.
 2. IDE on the board (mister126); MDOS 7.46; bq4847 clock registers are static (time of the last RTC load).
 3. Mouse (V9938 colour bus), joystick check, sound check, OSD options (boot ROM version, VRAM 192K).
