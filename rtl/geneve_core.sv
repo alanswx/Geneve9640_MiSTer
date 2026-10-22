@@ -436,7 +436,20 @@ wd1770 #(.CLK_HZ(CLK_HZ)) wdc (
 typedef enum logic [2:0] { B_IDLE, B_READ, B_WRITE, B_VDP, B_DRAM, B_ACK } bstate_t;
 bstate_t     bst;
 logic [7:0]  rdval;
-logic        pend_write;
+logic        pend_write, pend_rdaddr;
+
+// DRAM (SDRAM on the MiSTer): reads start at the address phase, so the byte is
+// there when the CPU's read phase comes; writes are posted (acknowledged at once).
+logic        dbusy;          // a DRAM request is outstanding
+logic        dbusy_rd;       // ... and it is a read
+logic        pf_valid;       // read-ahead data for the current access
+logic [7:0]  pf_data;
+logic        rd_want;        // read-ahead wanted (DRAM was busy)
+logic [18:0] rd_addr;
+logic        rs_wait;        // the read phase came before the data
+logic        wq;             // a write waiting for the DRAM
+logic [18:0] wq_addr;
+logic [7:0]  wq_data;
 
 always_ff @(posedge clk) begin
     logic [7:0] v;
@@ -455,10 +468,18 @@ always_ff @(posedge clk) begin
     if (reset) begin
         bst <= B_IDLE;
         pend_write <= 1'b0;
+        pend_rdaddr <= 1'b0;
         fdc_latch <= 8'd0;
+        dbusy <= 1'b0;
+        dbusy_rd <= 1'b0;
+        pf_valid <= 1'b0;
+        rd_want <= 1'b0;
+        rs_wait <= 1'b0;
+        wq <= 1'b0;
     end else begin
         // The GA decodes on bus_as; the access itself happens one clk later.
         pend_write <= bus_as && bus_we && !bus_onchip;
+        pend_rdaddr <= bus_as && !bus_we && !bus_onchip;
 
         if (pend_write) begin
             // MAME memwrite: all selected devices take the byte
@@ -469,11 +490,10 @@ always_ff @(posedge clk) begin
                 vdp_dbo <= bus_dout;
                 bst <= B_VDP;
             end else if (func == F_DRAM || func == F_GROM) begin
-                dram_req <= 1'b1;
-                dram_we <= 1'b1;
-                dram_addr <= ga_dram_addr;
-                dram_wdata <= bus_dout;
-                bst <= B_DRAM;
+                // posted: queued, acknowledged when the DRAM takes it (below)
+                wq <= 1'b1;
+                wq_addr <= ga_dram_addr;
+                wq_data <= bus_dout;
             end else begin
                 if (func == F_SOUND) snd_we <= 1'b1;
                 if (func == F_CLOCK) rtc_wr <= 1'b1;
@@ -492,10 +512,14 @@ always_ff @(posedge clk) begin
                 vdp_port <= bus_addr[2:1];
                 bst <= B_VDP;
             end else if (func == F_DRAM || func == F_GROM) begin
-                dram_req <= 1'b1;
-                dram_we <= 1'b0;
-                dram_addr <= ga_dram_addr;
-                bst <= B_DRAM;
+                if (pf_valid) begin
+                    bus_din <= pf_data;
+                    bus_ack <= 1'b1;
+                end else if (dram_ack && dbusy_rd) begin     // arrives right now
+                    bus_din <= dram_rdata;
+                    bus_ack <= 1'b1;
+                end else
+                    rs_wait <= 1'b1;
             end else begin
                 v = 8'h00;
                 if (ga_rdata_en) v = ga_rdata;
@@ -522,13 +546,59 @@ always_ff @(posedge clk) begin
             bus_ack <= 1'b1;
             bst <= B_IDLE;
         end
-        B_DRAM: if (dram_ack) begin
-            bus_din <= dram_rdata;
-            bus_ack <= 1'b1;
-            bst <= B_IDLE;
-        end
         default: ;
         endcase
+
+        // DRAM requests
+        begin
+            logic busy, want, wqv, valid;
+            busy = dbusy;
+            want = rd_want;
+            wqv = wq;
+            valid = pf_valid;
+            if (pend_rdaddr) begin
+                // a new access: the read-ahead belongs to it if it is a DRAM read
+                valid = 1'b0;
+                want = (func == F_DRAM || func == F_GROM);
+                rd_addr <= ga_dram_addr;
+            end
+            if (pend_write && (func == F_DRAM || func == F_GROM)) wqv = 1'b1;
+            if (dram_ack) begin
+                busy = 1'b0;
+                if (dbusy_rd && !pend_rdaddr) begin
+                    valid = 1'b1;
+                    pf_data <= dram_rdata;
+                    if (rs_wait) begin
+                        bus_din <= dram_rdata;
+                        bus_ack <= 1'b1;
+                        rs_wait <= 1'b0;
+                    end
+                end
+            end
+            if (!busy) begin
+                if (wq && !pend_write) begin
+                    dram_req <= 1'b1;
+                    dram_we <= 1'b1;
+                    dram_addr <= wq_addr;
+                    dram_wdata <= wq_data;
+                    busy = 1'b1;
+                    dbusy_rd <= 1'b0;
+                    wqv = 1'b0;
+                    bus_ack <= 1'b1;
+                end else if (rd_want && !pend_rdaddr) begin
+                    dram_req <= 1'b1;
+                    dram_we <= 1'b0;
+                    dram_addr <= rd_addr;
+                    busy = 1'b1;
+                    dbusy_rd <= 1'b1;
+                    want = 1'b0;
+                end
+            end
+            dbusy <= busy;
+            rd_want <= want;
+            wq <= wqv;
+            pf_valid <= valid;
+        end
 
         // CRU
         if (cru_wr) begin

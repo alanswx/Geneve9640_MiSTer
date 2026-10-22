@@ -1528,4 +1528,28 @@ end
 
 
 
+`ifdef PERF
+// Simulation only: why CLKOUT credit is lost (credit full when ce comes)
+longint perf_lost, perf_lost_wait, perf_lost_rsamp, perf_lost_exec, perf_ce, perf_clk;
+always_ff @(posedge clk) begin
+    perf_clk <= perf_clk + 1;
+    if (ce) perf_ce <= perf_ce + 1;
+    if (ce && credit == 4'hf) begin
+        perf_lost <= perf_lost + 1;
+    end
+end
+// state census on every clk while there is unused credit (the CPU is behind)
+longint perf_behind, perf_b_wait, perf_b_rsamp, perf_b_pend, perf_b_exec, perf_b_div;
+always_ff @(posedge clk) if (credit != 4'd0 && !reset) begin
+    perf_behind <= perf_behind + 1;
+    if (div_busy) perf_b_div <= perf_b_div + 1;
+    else if (waiting) perf_b_wait <= perf_b_wait + 1;
+    else if (pend != 6'd0) perf_b_pend <= perf_b_pend + 1;
+    else if (rsamp != 2'd0 && check_ready) perf_b_rsamp <= perf_b_rsamp + 1;
+    else perf_b_exec <= perf_b_exec + 1;
+end
+final $display("PERF ce %0d lost %0d | behind clks %0d: waiting-ack %0d, pend %0d, rsamp %0d, exec %0d, div %0d",
+               perf_ce, perf_lost, perf_behind, perf_b_wait, perf_b_pend, perf_b_rsamp, perf_b_exec, perf_b_div);
+`endif
+
 endmodule

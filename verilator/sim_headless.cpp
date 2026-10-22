@@ -39,7 +39,8 @@ struct Options {
     bool        quiet = false;
     bool        fdc_log = false;
     bool        pixstats = false;
-    uint32_t    mount_at = 0;              // --mount-at FRAME: images appear in the SD slots at FRAME (make sd)
+    uint32_t    mount_at = 0;
+    std::string wav_file;                  // --wav FILE: sound output, 48 kHz 16-bit mono              // --mount-at FRAME: images appear in the SD slots at FRAME (make sd)
     std::string vdp_log;                   // --vdp-log FILE: CPU writes to VDP ports 1-3
     struct Key { uint32_t frame; std::vector<uint8_t> codes; };
     std::vector<Key> keys;                 // --xt FRAME:HEX,HEX,...
@@ -350,6 +351,8 @@ int Sim::run()
         }
 
     FILE *trace = opt.trace_file.empty() ? nullptr : fopen(opt.trace_file.c_str(), "w");
+    std::vector<int16_t> wav;
+    double wav_acc = 0;
     FILE *vdplog = opt.vdp_log.empty() ? nullptr : fopen(opt.vdp_log.c_str(), "w");
 
     top->reset = 1;
@@ -394,6 +397,14 @@ int Sim::run()
         floppy();
 #endif
 
+        if (!opt.wav_file.empty()) {
+            wav_acc += 48000.0;
+            if (wav_acc >= CLK_HZ) {
+                wav_acc -= CLK_HZ;
+                wav.push_back((int16_t)((int)top->sound * 128 - 16384));
+            }
+        }
+
         if (top->dbg_inst && trace) {
             // the operand words of an instruction arrive with the next one: print the previous line now
             if (have_prev && prev.c >= opt.trace_from && prev.c <= opt.trace_to)
@@ -428,6 +439,19 @@ int Sim::run()
         if (Verilated::gotFinish()) break;
     }
     if (trace) fclose(trace);
+    if (!opt.wav_file.empty()) {
+        FILE *f = fopen(opt.wav_file.c_str(), "wb");
+        if (f) {
+            uint32_t n = wav.size() * 2;
+            auto w32 = [&](uint32_t v) { fwrite(&v, 4, 1, f); };
+            auto w16 = [&](uint16_t v) { fwrite(&v, 2, 1, f); };
+            fwrite("RIFF", 1, 4, f); w32(36 + n); fwrite("WAVEfmt ", 1, 8, f);
+            w32(16); w16(1); w16(1); w32(48000); w32(96000); w16(2); w16(16);
+            fwrite("data", 1, 4, f); w32(n);
+            fwrite(wav.data(), 2, wav.size(), f);
+            fclose(f);
+        }
+    }
 
     for (int i = 0; i < 2; i++)
         if (disk[i].dirty && !opt.dsk_readonly) {
@@ -467,6 +491,7 @@ int main(int argc, char **argv)
         else if (a == "--fdc-log") o.fdc_log = true;
         else if (a == "--pixstats") o.pixstats = true;
         else if (a == "--mount-at") o.mount_at = std::stoul(next());
+        else if (a == "--wav") o.wav_file = next();
         else if (a == "--vdp-log") o.vdp_log = next();
         else if (a == "--type") {
             std::string t = next();
