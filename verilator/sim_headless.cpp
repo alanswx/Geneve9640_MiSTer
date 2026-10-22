@@ -39,6 +39,7 @@ struct Options {
     bool        quiet = false;
     bool        fdc_log = false;
     bool        pixstats = false;
+    uint32_t    mount_at = 0;              // --mount-at FRAME: images appear in the SD slots at FRAME (make sd)
     std::string vdp_log;                   // --vdp-log FILE: CPU writes to VDP ports 1-3
     struct Key { uint32_t frame; std::vector<uint8_t> codes; };
     std::vector<Key> keys;                 // --xt FRAME:HEX,HEX,...
@@ -138,6 +139,11 @@ private:
     void tick();
     void video();
     void floppy();
+    void sdcard();
+    int sd_state = 0, sd_drv = 0, sd_pos = 0;
+    bool sd_write = false, sd_mount_pending = true;
+    unsigned sd_mounted = 0;
+    uint32_t sd_blk = 0;
     void save_png(const std::string &fn);
 };
 
@@ -192,6 +198,59 @@ void Sim::video()
         }
         if (top->vga_r | top->vga_g | top->vga_b) lit++;
         px++;
+    }
+}
+
+// hps_io's SD block protocol (512-byte blocks) for rtl/geneve_disk.sv ('make sd')
+void Sim::sdcard()
+{
+    top->img_mounted = 0;
+    top->sd_buff_wr = 0;
+    if (sd_mount_pending && frame >= opt.mount_at) {
+        for (int d = 0; d < 2; d++)
+            if (disk[d].present && !(sd_mounted & (1 << d))) {
+                top->img_mounted = 1 << d;
+                top->img_size = disk[d].data.size();
+                sd_mounted |= 1 << d;
+                return;
+            }
+        sd_mount_pending = false;
+    }
+    switch (sd_state) {
+    case 0:
+        for (int d = 0; d < 2; d++)
+            if ((top->sd_rd | top->sd_wr) & (1 << d)) {
+                sd_drv = d;
+                sd_write = (top->sd_wr >> d) & 1;
+                sd_blk = d ? top->sd_lba1 : top->sd_lba0;
+                sd_pos = 0;
+                sd_state = 1;
+                top->sd_ack = 1 << d;
+                if (opt.fdc_log) fprintf(stderr, "sd %s DSK%d block %u (frame %u)\n", sd_write ? "write" : "read", d + 1, sd_blk, frame);
+                break;
+            }
+        break;
+    case 1: {
+        Disk &dk = disk[sd_drv];
+        size_t off = (size_t)sd_blk * 512 + sd_pos;
+        top->sd_buff_addr = sd_pos;
+        if (!sd_write) {
+            top->sd_buff_dout = off < dk.data.size() ? dk.data[off] : 0;
+            top->sd_buff_wr = 1;
+        } else if (sd_pos > 0) {
+            // din follows addr one clk later (registered block RAM)
+            size_t o = (size_t)sd_blk * 512 + sd_pos - 1;
+            uint8_t v = sd_drv ? top->sd_buff_din1 : top->sd_buff_din0;
+            if (o < dk.data.size()) dk.data[o] = v;
+            dk.dirty = true;
+        }
+        if (++sd_pos == (sd_write ? 513 : 512)) sd_state = 2;
+        break;
+    }
+    case 2:
+        top->sd_ack = 0;
+        sd_state = 0;
+        break;
     }
 }
 
@@ -288,7 +347,11 @@ int Sim::run()
     while (true) {
         tick();
         video();
+#ifdef USE_SD
+        sdcard();
+#else
         floppy();
+#endif
 
         if (top->dbg_inst && trace) {
             // the operand words of an instruction arrive with the next one: print the previous line now
@@ -362,6 +425,7 @@ int main(int argc, char **argv)
         else if (a == "--quiet") o.quiet = true;
         else if (a == "--fdc-log") o.fdc_log = true;
         else if (a == "--pixstats") o.pixstats = true;
+        else if (a == "--mount-at") o.mount_at = std::stoul(next());
         else if (a == "--vdp-log") o.vdp_log = next();
         else if (a == "--xt") {
             std::string s = next();

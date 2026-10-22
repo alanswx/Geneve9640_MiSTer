@@ -28,6 +28,20 @@ module top(
    input         rtc_load,
    input  [55:0] rtc_bcd,
 
+   // hps_io sd_* side (used with +define+USE_SD: rtl/geneve_disk.sv between core and harness)
+   input   [1:0] img_mounted,
+   input  [63:0] img_size,
+   output [31:0] sd_lba0,
+   output [31:0] sd_lba1,
+   output  [1:0] sd_rd,
+   output  [1:0] sd_wr,
+   input   [1:0] sd_ack,
+   input   [8:0] sd_buff_addr,
+   input   [7:0] sd_buff_dout,
+   output  [7:0] sd_buff_din0,
+   output  [7:0] sd_buff_din1,
+   input         sd_buff_wr,
+
    input   [1:0] fdc_ready,
    input   [1:0] fdc_wprot,
    input   [7:0] fdc_spt0,
@@ -99,6 +113,44 @@ always @(posedge clk) begin
       dram_cnt <= dram_cnt - 1'b1;
 end
 
+`ifdef USE_SD
+wire        c_fdc_rd, c_fdc_wr, c_fdc_drive, c_fdc_ack, c_buf_wr;
+wire [15:0] c_fdc_lsn;
+wire  [7:0] c_buf_addr, c_buf_din, c_buf_dout;
+wire  [1:0] c_ready, c_wprot;
+wire  [1:0][7:0] c_spt, c_tracks;
+wire  [1:0][1:0] c_sides;
+wire [31:0] sd_lba[2];
+wire  [7:0] sd_buff_din[2];
+assign sd_lba0 = sd_lba[0];
+assign sd_lba1 = sd_lba[1];
+assign sd_buff_din0 = sd_buff_din[0];
+assign sd_buff_din1 = sd_buff_din[1];
+assign fdc_rd = 1'b0;
+assign fdc_wr = 1'b0;
+
+geneve_disk disk (
+   .clk(clk), .reset(reset),
+   .img_mounted(img_mounted), .img_readonly(1'b0), .img_size(img_size),
+   .sd_lba(sd_lba), .sd_rd(sd_rd), .sd_wr(sd_wr), .sd_ack(sd_ack),
+   .sd_buff_addr(sd_buff_addr), .sd_buff_dout(sd_buff_dout), .sd_buff_din(sd_buff_din), .sd_buff_wr(sd_buff_wr),
+   .ready(c_ready), .wprot(c_wprot), .spt(c_spt), .tracks(c_tracks), .sides(c_sides),
+   .img_rd(c_fdc_rd), .img_wr(c_fdc_wr), .img_lsn(c_fdc_lsn), .img_drive(c_fdc_drive), .img_ack(c_fdc_ack),
+   .buf_wr(c_buf_wr), .buf_addr(c_buf_addr), .buf_din(c_buf_din), .buf_dout(c_buf_dout),
+   .busy()
+);
+`define FDC_PORTS .fdc_ready(c_ready), .fdc_wprot(c_wprot), .fdc_spt(c_spt), .fdc_tracks(c_tracks), .fdc_sides(c_sides), \
+   .fdc_rd(c_fdc_rd), .fdc_wr(c_fdc_wr), .fdc_lsn(c_fdc_lsn), .fdc_drive(c_fdc_drive), .fdc_ack(c_fdc_ack), \
+   .fdc_buf_wr(c_buf_wr), .fdc_buf_addr(c_buf_addr), .fdc_buf_din(c_buf_din), .fdc_buf_dout(c_buf_dout),
+`else
+assign sd_lba0 = 0; assign sd_lba1 = 0; assign sd_rd = 0; assign sd_wr = 0;
+assign sd_buff_din0 = 0; assign sd_buff_din1 = 0;
+`define FDC_PORTS .fdc_ready(fdc_ready), .fdc_wprot(fdc_wprot), \
+   .fdc_spt({fdc_spt1, fdc_spt0}), .fdc_tracks({fdc_tracks1, fdc_tracks0}), .fdc_sides({fdc_sides1, fdc_sides0}), \
+   .fdc_rd(fdc_rd), .fdc_wr(fdc_wr), .fdc_lsn(fdc_lsn), .fdc_drive(fdc_drive), .fdc_ack(fdc_ack), \
+   .fdc_buf_wr(fdc_buf_wr), .fdc_buf_addr(fdc_buf_addr), .fdc_buf_din(fdc_buf_din), .fdc_buf_dout(fdc_buf_dout),
+`endif
+
 geneve_core core (
    .clk(clk), .reset(reset),
    .rom_wr(rom_wr), .rom_addr(rom_addr), .rom_data(rom_data),
@@ -110,10 +162,7 @@ geneve_core core (
    .kbd_strobe(kbd_strobe), .kbd_code(kbd_code),
    .joy1(joy1), .joy2(joy2),
    .rtc_load(rtc_load), .rtc_bcd(rtc_bcd),
-   .fdc_ready(fdc_ready), .fdc_wprot(fdc_wprot),
-   .fdc_spt({fdc_spt1, fdc_spt0}), .fdc_tracks({fdc_tracks1, fdc_tracks0}), .fdc_sides({fdc_sides1, fdc_sides0}),
-   .fdc_rd(fdc_rd), .fdc_wr(fdc_wr), .fdc_lsn(fdc_lsn), .fdc_drive(fdc_drive), .fdc_ack(fdc_ack),
-   .fdc_buf_wr(fdc_buf_wr), .fdc_buf_addr(fdc_buf_addr), .fdc_buf_din(fdc_buf_din), .fdc_buf_dout(fdc_buf_dout),
+   `FDC_PORTS
    .dbg_inst(dbg_inst), .dbg_pc(dbg_pc), .dbg_wp(dbg_wp), .dbg_st(dbg_st), .dbg_ir(dbg_ir), .dbg_op1(dbg_op1), .dbg_op2(dbg_op2), .dbg_cycles(dbg_cycles)
 );
 

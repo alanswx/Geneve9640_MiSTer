@@ -216,6 +216,17 @@ logic [15:0] kdelay;
 logic [31:0] kpoll;
 logic [1:0]  kreset_cnt;
 
+`ifdef WD_DEBUG
+logic kdbg_clk, kdbg_rdy;
+always_ff @(posedge clk) begin
+    kdbg_clk <= kbd_clk_out;
+    kdbg_rdy <= kbd_ready;
+    if (kbd_strobe) $display("KBD strobe %02x (fifo %0d/%0d) t=%0d", kbd_code, kf_rd, kf_wr, dbg_cycles);
+    if (kbd_load) $display("KBD load %02x t=%0d", kbd_load_code, dbg_cycles);
+    if (kdbg_clk != kbd_clk_out || kdbg_rdy != kbd_ready) $display("KBD clk %b ready %b t=%0d", kbd_clk_out, kbd_ready, dbg_cycles);
+end
+`endif
+
 // MAME genkbd.cpp: the keyboard polls at 120 Hz; the clock line held low for
 // 3 polls (25 ms) resets it, and after a reset it sends the BAT code AA.
 always_ff @(posedge clk) begin
@@ -353,6 +364,11 @@ end
 logic vdp_reset_pulse;
 always_ff @(posedge clk)
     vdp_reset_pulse <= cru_wr && cru_addr[15:6] == 10'd0 && cru_addr[5:1] == 5'd17 && cru_dout;
+
+// 9901 P0 = 1 drives the box RESET* line: the cards' latches clear (the DDCC-1's LS259 and WD1770)
+logic box_reset_pulse;
+always_ff @(posedge clk)
+    box_reset_pulse <= cru_wr && cru_addr[15:6] == 10'd0 && cru_addr[5:1] == 5'd16 && cru_dout;
 
 VDP vdp_i (
     .CLK21M(clk), .RESET(reset || vdp_reset_pulse),
@@ -519,6 +535,7 @@ always_ff @(posedge clk) begin
             if (ddcc_cru) fdc_latch[cru_addr[3:1]] <= cru_dout;
             bus_ack <= 1'b1;
         end
+        if (box_reset_pulse) fdc_latch <= 8'd0;
         if (cru_rd) begin
             if (cru_addr[15:6] == 10'd0) cru_din <= rd9901;
             else if (ddcc_cru) begin

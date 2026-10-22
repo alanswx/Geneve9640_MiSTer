@@ -107,6 +107,13 @@ function automatic logic sector_ok(input logic [7:0] sec);
         && (!side || sides[dn] == 2'd2);
 endfunction
 
+`ifdef WD_DEBUG
+always_ff @(posedge clk) begin
+    if (wr && addr == 2'd0) $display("WD cmd %02x drive %0d side %0d dden_n %0d trk %0d sec %0d hp %0d ready %b spt %0d", din, drive, side, dden_n, track_r, sector_r, hp, ready, d_spt);
+    if (st == S_DONE) $display("WD done status %02x", status);
+end
+`endif
+
 always_ff @(posedge clk) begin
     img_rd <= 1'b0;
     img_wr <= 1'b0;

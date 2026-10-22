@@ -65,7 +65,15 @@ $(HL_EXE): $(V_SRC) $(RTL)/tms9995/tms9995_ucode.svh $(RTL)/geneve_ga_defs.svh s
 	$V -cc $(V_OPT) --exe --build -j 0 --Mdir $(HL_DIR) --top-module top \
 		-CFLAGS "$(CXXFLAGS)" $(V_SRC) sim_headless.cpp -o Vtop
 
-clean:
-	rm -rf $(HL_DIR) $(GEN) $(WORK) out
+# The floppy images through rtl/geneve_disk.sv and an hps_io SD model, as on the MiSTer
+SD_DIR = obj_dir_sd
+sd: ./$(SD_DIR)/Vtop
 
-.PHONY: all headless netlist clean
+./$(SD_DIR)/Vtop: $(V_SRC) $(RTL)/geneve_disk.sv $(RTL)/tms9995/tms9995_ucode.svh $(RTL)/geneve_ga_defs.svh sim_headless.cpp Makefile
+	$V -cc $(V_OPT) +define+USE_SD --exe --build -j 0 --Mdir $(SD_DIR) --top-module top \
+		-CFLAGS "$(CXXFLAGS) -DUSE_SD" $(V_SRC) $(RTL)/geneve_disk.sv sim_headless.cpp -o Vtop
+
+clean:
+	rm -rf $(HL_DIR) $(SD_DIR) $(GEN) $(WORK) out
+
+.PHONY: all headless sd netlist clean
