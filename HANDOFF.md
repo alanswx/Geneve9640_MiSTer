@@ -21,6 +21,10 @@
   program; no known software uses it).
 - Floppy FORMAT (MDOS 6.50 FORMAT B:) gives a valid V9T9 image (write track sets the geometry); sim and board.
 - Joystick 1: TI BASIC CALL JOYST gives 4,4 for up+right, 0,-4 for down (sim: --joy FRAME:BITS).
+- Speech (PEB speech adapter, TMS5200 model): a test program speaking "HELLO" (LOAD ADDRESS >351A, SPEAK)
+  gives 0.52 s of speech in the sim (--speech roms/speech.bin --speech-wav) and 0.45 s on the board.
+  Not yet checked by ear; MAME's speech adapter stayed silent for the same program (native mode).
+  The ROM must be bit-reversed (tools/mkbootrom.py does it).
 - IDE hard disk: the core has the Nouspikel IDE card (CRU >1000, Geneve mode, rtl/geneve_core.sv + rtl/ata_disk.sv);
   its 512K SRAM is in SDRAM (dram_addr bit 19) and preloaded from boot.rom. OSD: Boot ROM 1.00/2.00, IDE card
   Off/On, S2 = IDE disk (.hdv/.raw/.img, plain 512-byte sector dump). Sim: `--rom2 roms/genbt200.bin --ide X.raw
