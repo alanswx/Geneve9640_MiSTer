@@ -19,6 +19,8 @@
   its 512K SRAM is in SDRAM (dram_addr bit 19) and preloaded from boot.rom. OSD: Boot ROM 1.00/2.00, IDE card
   Off/On, S2 = IDE disk (.hdv/.raw/.img, plain 512-byte sector dump). Sim: `--rom2 roms/genbt200.bin --ide X.raw
   --ide-sram idesram.bin` boots MDOS 7.45 from IDE; MDOS sees the disk as SCS6. (SCSMAP 6A), DIR/COPY work.
+  Board (mister126, 2026-10-21): boot ROM 2.00 + IDE card -> LOAD-IDE v3.05 -> MDOS 7.45 from MDOS745_IDE.hdv,
+  COPY to SCS6. lands in the .hdv on the SD card. Set the OSD options, then Reset (the mount survives resets).
 - IDE background (MAME verified): boot ROM 2.00 (genbt200.bin) boots MDOS 7.45 from an IDE
   disk with no floppy. Needs: Nouspikel IDE card in Geneve mode at CRU >1000; Fred Kaal's IDE DSR v14
   (IDEDSR14.dsk; NOT Nouspikel's IDEAL, which has no IDE1 device) in the card's 512K SRAM; on the disk
