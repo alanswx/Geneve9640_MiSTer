@@ -58,8 +58,10 @@ typedef enum logic [3:0] {
 } state_t;
 
 state_t      st;
-logic        present, ro;
-logic [31:0] total;               // sectors
+// the mount survives resets (hps_io mounts once, e.g. from an MGL before the OSD reset)
+logic        present = 1'b0;
+logic        ro = 1'b0;
+logic [31:0] total = 32'd0;       // sectors
 logic [7:0]  err, seccnt, secnum, cyllo, cylhi, drhd;
 logic        bsy, drq, errb, irq, nien, srst;
 logic        to_disk;             // S_DOUT ends with a disk write (not WRITE BUFFER)
@@ -170,7 +172,6 @@ end
 always_ff @(posedge clk) begin
     if (reset) begin
         st <= S_IDLE;
-        present <= 1'b0;
         sd_rd <= 1'b0;
         sd_wr <= 1'b0;
     end

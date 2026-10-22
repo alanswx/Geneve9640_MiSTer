@@ -451,6 +451,10 @@ int Sim::run()
         tick();
     }
     top->rom_wr = 0;
+    // the IDE image is mounted while the core is in reset (as an MGL does before an OSD reset)
+    idedisk();
+    tick();
+    idedisk();
     for (int i = 0; i < 16; i++) tick();
     top->reset = 0;
     // the RTC takes the time after reset (as hps_io's RTC update on the MiSTer)
