@@ -151,6 +151,26 @@ always @(posedge clk) begin
 end
 `endif
 
+`ifdef VDP_STATE
+// dump VDP mode registers and VRAM once, at dbg_cycles == `VDP_STATE
+always @(posedge clk) if (core.dbg_cycles == `VDP_STATE) begin
+   $display("VDPSTATE r0mode=%b r1mode=%b r2=%02x r13=%02x",
+      core.vdp_i.u_vdp_register.reg_r0_disp_mode, core.vdp_i.u_vdp_register.reg_r1_disp_mode,
+      core.vdp_i.u_vdp_register.reg_r2_pt_nam_addr, core.vdp_i.u_vdp_register.reg_r13_blink_period);
+   $writememh("vram_lo.hex", core.vram_lo);
+   $writememh("vram_hi.hex", core.vram_hi);
+end
+`endif
+
+`ifdef VRAMW_LOG
+// every VRAM write: cycle, PRAMADR, data (interleaved G6/G7 layout: logical = {adr[15:0], adr[16]})
+reg vw_d;
+always @(posedge clk) begin
+   vw_d <= !core.pram_we_n;
+   if (!core.pram_we_n && !vw_d) $display("VW %0d %05x %02x", core.dbg_cycles, core.pram_adr, core.pram_dbo);
+end
+`endif
+
 `ifdef VRAM_DEBUG
 reg vx_rd_d;
 always @(posedge clk) begin

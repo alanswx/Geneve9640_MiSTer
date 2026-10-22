@@ -524,7 +524,7 @@ int Sim::run()
         }
 
         if (top->dbg_wr && vdplog && ((top->dbg_waddr & 0xfff0) == 0xf100 || (top->dbg_waddr & 0xfc00) == 0x8c00)
-            && (top->dbg_waddr & 0x6) != 0)
+            && ((top->dbg_waddr & 0x6) != 0 || (top->dbg_waddr & 0xfff0) == 0xf100))
             fprintf(vdplog, "%u %llu %04X %02X\n", frame, (unsigned long long)top->dbg_cycles, top->dbg_waddr, top->dbg_wdata);
 
         // joystick

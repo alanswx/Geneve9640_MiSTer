@@ -731,6 +731,7 @@ ARCHITECTURE RTL OF VDP IS
             VDPVRAMACCESSADDRTMP        : OUT   STD_LOGIC_VECTOR( 16 DOWNTO 0 );
             VDPVRAMADDRSETREQ           : OUT   STD_LOGIC;
             VDPVRAMADDRSETACK           : IN    STD_LOGIC;
+            VDPVRAMADDRSETFULL          : OUT   STD_LOGIC;
             VDPVRAMWRREQ                : OUT   STD_LOGIC;
             VDPVRAMWRACK                : IN    STD_LOGIC;
             VDPVRAMRDDATA               : IN    STD_LOGIC_VECTOR(  7 DOWNTO 0 );
@@ -868,6 +869,7 @@ ARCHITECTURE RTL OF VDP IS
     SIGNAL VDPVRAMACCESSADDRTMP         : STD_LOGIC_VECTOR( 16 DOWNTO 0 );
     SIGNAL VDPVRAMADDRSETREQ            : STD_LOGIC;
     SIGNAL VDPVRAMADDRSETACK            : STD_LOGIC;
+    SIGNAL VDPVRAMADDRSETFULL           : STD_LOGIC;
     SIGNAL VDPVRAMWRREQ                 : STD_LOGIC;
     SIGNAL VDPVRAMWRACK                 : STD_LOGIC;
     SIGNAL VDPVRAMRDDATA                : STD_LOGIC_VECTOR(  7 DOWNTO 0 );
@@ -1434,7 +1436,11 @@ BEGIN
             ELSIF( VRAMACCESSSWITCH = VRAM_ACCESS_CPUR ) THEN
                 -- VRAM READ BY CPU
                 IF( VDPVRAMADDRSETREQ /= VDPVRAMADDRSETACK ) THEN
-                    VDPVRAMACCESSADDRV := VDPVRAMACCESSADDRTMP;
+                    IF( VDPVRAMADDRSETFULL = '1' )THEN
+                        VDPVRAMACCESSADDRV := VDPVRAMACCESSADDRTMP;
+                    ELSE
+                        VDPVRAMACCESSADDRV := VDPVRAMACCESSADDRTMP(16 DOWNTO 14) & VDPVRAMACCESSADDR(13 DOWNTO 0);
+                    END IF;
                     -- CLEAR VRAM ADDRESS SET REQUEST SIGNAL
                     VDPVRAMADDRSETACK <= NOT VDPVRAMADDRSETACK;
                 ELSE
@@ -1526,7 +1532,11 @@ BEGIN
                 END CASE;
 
                 IF( (DOTSTATE = "11") AND (VDPVRAMADDRSETREQ /= VDPVRAMADDRSETACK) )THEN
-                    VDPVRAMACCESSADDR <= VDPVRAMACCESSADDRTMP;
+                    IF( VDPVRAMADDRSETFULL = '1' )THEN
+                        VDPVRAMACCESSADDR <= VDPVRAMACCESSADDRTMP;
+                    ELSE
+                        VDPVRAMACCESSADDR(16 DOWNTO 14) <= VDPVRAMACCESSADDRTMP(16 DOWNTO 14);
+                    END IF;
                     VDPVRAMADDRSETACK <= NOT VDPVRAMADDRSETACK;
                 END IF;
             END IF;
@@ -1744,6 +1754,7 @@ BEGIN
         VDPVRAMACCESSADDRTMP        => VDPVRAMACCESSADDRTMP         ,
         VDPVRAMADDRSETREQ           => VDPVRAMADDRSETREQ            ,
         VDPVRAMADDRSETACK           => VDPVRAMADDRSETACK            ,
+        VDPVRAMADDRSETFULL          => VDPVRAMADDRSETFULL           ,
         VDPVRAMWRREQ                => VDPVRAMWRREQ                 ,
         VDPVRAMWRACK                => VDPVRAMWRACK                 ,
         VDPVRAMRDDATA               => VDPVRAMRDDATA                ,

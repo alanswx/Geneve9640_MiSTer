@@ -53,7 +53,7 @@ EOF
     -peb:slot8 ddcc1 $MAME_DRIVES -flop1 boot.dsk $FLOP2 > mame.log 2>&1) &
 
 # simulation
-(cd "$ROOT/verilator" && ./obj_dir_sd/Vtop --frames "$LAST" --quiet --out "$D/sim" \
+(cd "$ROOT/verilator" && ${SIM:-./obj_dir_headless/Vtop} --frames "$LAST" --quiet --out "$D/sim" \
     $(echo "$FRAMES" | tr ',' '\n' | sed 's/^/--screenshot /') \
     --dsk1 "$D/boot_sim.dsk" $SIM2 > "$D/sim.log" 2>&1) &
 wait

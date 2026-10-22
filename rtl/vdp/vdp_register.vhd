@@ -127,6 +127,7 @@ ENTITY VDP_REGISTER IS
         VDPVRAMACCESSADDRTMP        : OUT   STD_LOGIC_VECTOR( 16 DOWNTO 0 );
         VDPVRAMADDRSETREQ           : OUT   STD_LOGIC;
         VDPVRAMADDRSETACK           : IN    STD_LOGIC;
+        VDPVRAMADDRSETFULL          : OUT   STD_LOGIC;      -- Geneve9640_MiSTer: '0' = the pending set is R#14 only (A16-A14)
         VDPVRAMWRREQ                : OUT   STD_LOGIC;
         VDPVRAMWRACK                : IN    STD_LOGIC;
         VDPVRAMRDDATA               : IN    STD_LOGIC_VECTOR(  7 DOWNTO 0 );
@@ -270,8 +271,10 @@ ARCHITECTURE RTL OF VDP_REGISTER IS
 
     SIGNAL W_EVEN_DOTSTATE          : STD_LOGIC;
     SIGNAL W_IS_BITMAP_MODE         : STD_LOGIC;
+    SIGNAL FF_VRAMADDRSETREQ        : STD_LOGIC;
 BEGIN
     ACK                     <= FF_ACK;
+    VDPVRAMADDRSETREQ       <= FF_VRAMADDRSETREQ;
     SPVDPS0RESETREQ         <= FF_SPVDPS0RESETREQ;
 
     VDPMODEGRAPHIC1         <=  '1' WHEN( ( REG_R0_DISP_MODE & REG_R1_DISP_MODE(0) & REG_R1_DISP_MODE(1) ) = "00000" )ELSE '0';
@@ -597,7 +600,8 @@ BEGIN
             VDPREGPTR               <= (OTHERS => '0');
             VDPVRAMWRREQ            <= '0';
             VDPVRAMRDREQ            <= '0';
-            VDPVRAMADDRSETREQ       <= '0';
+            FF_VRAMADDRSETREQ       <= '0';
+            VDPVRAMADDRSETFULL      <= '1';
             VDPVRAMACCESSADDRTMP    <= (OTHERS => '0');
             VDPVRAMACCESSDATA       <= (OTHERS => '0');
             FF_R0_DISP_MODE         <= (OTHERS => '0');
@@ -688,18 +692,19 @@ BEGIN
                                 WHEN "01" =>    -- SET VRAM ACCESS ADDRESS(WRITE)
                                     VDPVRAMACCESSADDRTMP( 7 DOWNTO 0 ) <= VDPP1DATA( 7 DOWNTO 0);
                                     VDPVRAMACCESSADDRTMP(13 DOWNTO 8 ) <= DBO( 5 DOWNTO 0);
-                                    VDPVRAMADDRSETREQ <= NOT VDPVRAMADDRSETACK;
+                                    FF_VRAMADDRSETREQ <= NOT VDPVRAMADDRSETACK;
+                                    VDPVRAMADDRSETFULL <= '1';
                                 WHEN "00" =>    -- SET VRAM ACCESS ADDRESS(READ)
                                     VDPVRAMACCESSADDRTMP( 7 DOWNTO 0 ) <= VDPP1DATA( 7 DOWNTO 0);
                                     VDPVRAMACCESSADDRTMP(13 DOWNTO 8 ) <= DBO( 5 DOWNTO 0);
-                                    VDPVRAMADDRSETREQ <= NOT VDPVRAMADDRSETACK;
+                                    FF_VRAMADDRSETREQ <= NOT VDPVRAMADDRSETACK;
+                                    VDPVRAMADDRSETFULL <= '1';
                                     VDPVRAMRDREQ <= NOT VDPVRAMRDACK;
                                 WHEN "10" =>    -- DIRECT REGISTER SELECTION
                                     VDPREGPTR <= DBO( 5 DOWNTO 0);
                                     VDPREGWRPULSE <= '1';
-                                WHEN "11" =>    -- DIRECT REGISTER SELECTION ??
-                                    VDPREGPTR <= DBO( 5 DOWNTO 0);
-                                    VDPREGWRPULSE <= '1';
+                                WHEN "11" =>    -- Geneve9640_MiSTer: ignored on the V9938 (MAME, openMSX: "breaks the
+                                    NULL;       -- SNOW26 demo"); Geneve Tetris sends 'CE' before every picture byte
                                 WHEN OTHERS =>
                                     NULL;
                             END CASE;
@@ -780,8 +785,13 @@ BEGIN
                         WHEN "01101" =>     -- #13
                             REG_R13_BLINK_PERIOD    <= VDPP1DATA;
                         WHEN "01110" =>     -- #14
+                            -- Geneve9640_MiSTer: R#14 sets A16-A14 only; the auto-incremented A13-A0 stay
+                            -- (V9938 / MAME: address = R#14 << 14 | latch). Tetris writes R#14 before every byte.
                             VDPVRAMACCESSADDRTMP( 16 DOWNTO 14 ) <= VDPP1DATA( 2 DOWNTO 0);
-                            VDPVRAMADDRSETREQ <= NOT VDPVRAMADDRSETACK;
+                            FF_VRAMADDRSETREQ <= NOT VDPVRAMADDRSETACK;
+                            IF( FF_VRAMADDRSETREQ = VDPVRAMADDRSETACK )THEN
+                                VDPVRAMADDRSETFULL <= '0';
+                            END IF;
                         WHEN "01111" =>     -- #15
                             VDPR15STATUSREGNUM <= VDPP1DATA( 3 DOWNTO 0);
                         WHEN "10000" =>     -- #16

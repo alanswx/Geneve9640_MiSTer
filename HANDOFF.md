@@ -14,6 +14,12 @@
 - Tested (sim, and board where noted): MDOS 6.50/6.70/7.45 from floppy; two disks from one MGL (board);
   MIXPIC G7 picture (board); HIMIX3, BATWIND, BOXER, SFXER same as MAME; GPL 7.40 TI mode: module menu,
   Scott Adams' Adventure cartridge, TI BASIC; CALL SOUND(2000,440,0) = 440 Hz for 2.0 s (sim and board).
+- Tetris (9640 News, GAMES.CHD EXECGAMES.TETRIS): title picture same as MAME after two ESE VDP fixes:
+  an R#14 write keeps the auto-incremented A13-A0 (it reloaded the whole last-set address), and a second
+  control byte with bits 7-6 = 11 is ignored (MAME/openMSX; it was a register write). Tetris sends 04 CE
+  before every picture byte. Regression: tools/regress.sh VTOP OUT (screenshot md5s, compare two builds).
+- Native games found in hloberg's GAMES.CHD (MAME HFDC image; TIImageTool CommandShell export works on it):
+  EXECGAMES.{TETRIS,PINB,SHARK,SCRABBLE,SP}; Flying Shark needs memory above 512K (Memex/384K).
 - MDOS's floppy driver uses 40 tracks unless configured (GENCFG): keep test files below track 40.
 - Bus mouse (V9938 colour bus, MiSTer PS/2 mouse): 9640 News V1#3 MOUSE80 follows the mouse, right button
   writes, left exits (sim and board). Sim: --mouse FRAME:DX,DY,BUTTONS.
@@ -23,7 +29,8 @@
 - Joystick 1: TI BASIC CALL JOYST gives 4,4 for up+right, 0,-4 for down (sim: --joy FRAME:BITS).
 - Speech (PEB speech adapter, TMS5200 model): a test program speaking "HELLO" (LOAD ADDRESS >351A, SPEAK)
   gives 0.52 s of speech in the sim (--speech roms/speech.bin --speech-wav) and 0.45 s on the board.
-  Not yet checked by ear; MAME's speech adapter stayed silent for the same program (native mode).
+  Checked by ear on mister126 (user, 2026-10-22): sounds right. MAME's speech adapter stayed silent for the
+  same program (native mode).
   The ROM must be bit-reversed (tools/mkbootrom.py does it).
 - IDE hard disk: the core has the Nouspikel IDE card (CRU >1000, Geneve mode, rtl/geneve_core.sv + rtl/ata_disk.sv);
   its 512K SRAM is in SDRAM (dram_addr bit 19) and preloaded from boot.rom. OSD: Boot ROM 1.00/2.00, IDE card
