@@ -268,6 +268,7 @@ ENTITY VDP IS
         PRAMOE_N            : OUT   STD_LOGIC;
         PRAMWE_N            : OUT   STD_LOGIC;
         PRAMADR             : OUT   STD_LOGIC_VECTOR( 16 DOWNTO 0 );
+        PRAMEXP             : OUT   STD_LOGIC;      -- Geneve9640_MiSTer: access to the 64 KiB expansion RAM (R#45 MXC/MXS/MXD)
         PRAMDBI             : IN    STD_LOGIC_VECTOR( 15 DOWNTO 0 );
         PRAMDBO             : OUT   STD_LOGIC_VECTOR(  7 DOWNTO 0 );
 
@@ -513,6 +514,8 @@ ARCHITECTURE RTL OF VDP IS
 
             CUR_VDP_COMMAND     : OUT   STD_LOGIC_VECTOR(  7 DOWNTO 4 );
             PSTATE              : OUT   STD_LOGIC_VECTOR(  3 DOWNTO 0 );
+            PVRAMACCESSEXP      : OUT   STD_LOGIC;
+            PMXC                : OUT   STD_LOGIC;
 
             REG_R25_CMD         : IN    STD_LOGIC
         );
@@ -979,6 +982,9 @@ ARCHITECTURE RTL OF VDP IS
     SIGNAL VDPCMDVRAMWRREQ              : STD_LOGIC;
     SIGNAL VDPCMDVRAMRDREQ              : STD_LOGIC;
     SIGNAL VDPCMDVRAMACCESSADDR         : STD_LOGIC_VECTOR( 16 DOWNTO 0 );
+    SIGNAL VDPCMDVRAMACCESSEXP          : STD_LOGIC;
+    SIGNAL VDPCMDMXC                    : STD_LOGIC;
+    SIGNAL IRAMEXP                      : STD_LOGIC;
     SIGNAL VDPCMDVRAMWRDATA             : STD_LOGIC_VECTOR(  7 DOWNTO 0 );
 
     SIGNAL VDP_COMMAND_DRIVE            : STD_LOGIC;
@@ -1026,6 +1032,7 @@ ARCHITECTURE RTL OF VDP IS
 BEGIN
 
     PRAMADR     <=  IRAMADR;
+    PRAMEXP     <=  IRAMEXP;
     XRAMSEL     <=  IRAMADR(16);
     PRAMDAT     <=  PRAMDBI(  7 DOWNTO 0 )  WHEN( XRAMSEL = '0' )ELSE
                     PRAMDBI( 15 DOWNTO 8 );
@@ -1324,6 +1331,7 @@ BEGIN
         IF (RESET = '1') THEN
 
             IRAMADR <= (OTHERS => '1');
+            IRAMEXP <= '0';
             PRAMDBO <= (OTHERS => 'Z');
             PRAMOE_N <= '1';
             PRAMWE_N <= '1';
@@ -1412,6 +1420,7 @@ BEGIN
                 ELSE
                     IRAMADR <= VDPVRAMACCESSADDR;
                 END IF;
+                IRAMEXP <= VDPCMDMXC;
                 IF( (VDPMODETEXT1 = '1') OR (VDPMODETEXT1Q = '1') OR (VDPMODEMULTI = '1') OR (VDPMODEMULTIQ = '1') OR
                     (VDPMODEGRAPHIC1 = '1') OR (VDPMODEGRAPHIC2 = '1') ) THEN
                     VDPVRAMACCESSADDR(13 DOWNTO 0) <= VDPVRAMACCESSADDR(13 DOWNTO 0) + 1;
@@ -1439,6 +1448,7 @@ BEGIN
                 ELSE
                     IRAMADR <= VDPVRAMACCESSADDRV;
                 END IF;
+                IRAMEXP <= VDPCMDMXC;
                 IF( (VDPMODETEXT1 = '1') OR (VDPMODETEXT1Q = '1') OR (VDPMODEMULTI = '1') OR (VDPMODEMULTIQ = '1') OR
                     (VDPMODEGRAPHIC1 = '1') OR (VDPMODEGRAPHIC2 = '1') )THEN
                     VDPVRAMACCESSADDR(13 DOWNTO 0) <= VDPVRAMACCESSADDRV(13 DOWNTO 0) + 1;
@@ -1460,6 +1470,7 @@ BEGIN
                 ELSE
                     IRAMADR <= VDPCMDVRAMACCESSADDR;
                 END IF;
+                IRAMEXP <= VDPCMDVRAMACCESSEXP;
                 PRAMDBO <= VDPCMDVRAMWRDATA;
                 PRAMOE_N <= '1';
                 PRAMWE_N <= '0';
@@ -1473,6 +1484,7 @@ BEGIN
                 ELSE
                     IRAMADR <= VDPCMDVRAMACCESSADDR;
                 END IF;
+                IRAMEXP <= VDPCMDVRAMACCESSEXP;
                 PRAMDBO <= (OTHERS => 'Z');
                 PRAMOE_N <= '0';
                 PRAMWE_N <= '1';
@@ -1480,12 +1492,14 @@ BEGIN
             ELSIF( VRAMACCESSSWITCH = VRAM_ACCESS_SPRT )THEN
                 -- VRAM READ BY SPRITE MODULE
                 IRAMADR <= PRAMADRSPRITE;
+                IRAMEXP <= '0';
                 PRAMOE_N <= '0';
                 PRAMWE_N <= '1';
                 PRAMDBO <= (OTHERS => 'Z');
             ELSE
                 -- VRAM_ACCESS_DRAW
                 -- VRAM READ FOR SCREEN IMAGE BUILDING
+                IRAMEXP <= '0';
                 CASE DOTSTATE IS
                     WHEN "10" =>
                         PRAMDBO <= (OTHERS => 'Z');
@@ -1841,6 +1855,8 @@ BEGIN
         PSXTMP              => VDPCMDSXTMP          ,
         CUR_VDP_COMMAND     => CUR_VDP_COMMAND      ,
         PSTATE              => VDPCMDSTATE          ,
+        PVRAMACCESSEXP      => VDPCMDVRAMACCESSEXP  ,
+        PMXC                => VDPCMDMXC            ,
         REG_R25_CMD         => REG_R25_CMD
     );
 

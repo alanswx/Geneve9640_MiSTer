@@ -98,6 +98,8 @@ ENTITY VDP_COMMAND IS
 
         CUR_VDP_COMMAND     : OUT   STD_LOGIC_VECTOR(  7 DOWNTO 4 );
         PSTATE              : OUT   STD_LOGIC_VECTOR(  3 DOWNTO 0 );    -- Geneve9640_MiSTer: debug
+        PVRAMACCESSEXP      : OUT   STD_LOGIC;                          -- Geneve9640_MiSTer: access to expansion RAM (MXS/MXD)
+        PMXC                : OUT   STD_LOGIC;                          -- Geneve9640_MiSTer: R45 MXC (CPU access to expansion RAM)
 
         REG_R25_CMD         : IN    STD_LOGIC
     );
@@ -115,8 +117,10 @@ ARCHITECTURE RTL OF VDP_COMMAND IS
     SIGNAL EQ                   : STD_LOGIC;                            -- R45 BIT 1
     SIGNAL DIX                  : STD_LOGIC;                            -- R45 BIT 2
     SIGNAL DIY                  : STD_LOGIC;                            -- R45 BIT 3
---  SIGNAL MXS                  : STD_LOGIC;                            -- R45 BIT 4
---  SIGNAL MXD                  : STD_LOGIC;                            -- R45 BIT 5
+    SIGNAL MXS                  : STD_LOGIC;                            -- R45 BIT 4
+    SIGNAL MXD                  : STD_LOGIC;                            -- R45 BIT 5
+    SIGNAL MXC                  : STD_LOGIC;                            -- R45 BIT 6
+    SIGNAL VRAMACCESSEXP        : STD_LOGIC;
     SIGNAL CMR                  : STD_LOGIC_VECTOR(  7 DOWNTO 0 );      -- R46
 
     -- VDP COMMAND SIGNALS - INTERNAL REGISTERS
@@ -188,6 +192,8 @@ BEGIN
     PCLR            <=  CLR;
     PCE             <=  CE;
     PSTATE          <=  CONV_STD_LOGIC_VECTOR( TYPSTATE'POS(STATE), 4 );
+    PVRAMACCESSEXP  <=  VRAMACCESSEXP;
+    PMXC            <=  MXC;
     PBD             <=  BD;
     PTR             <=  TR;
     PSXTMP          <=  SXTMP;
@@ -240,8 +246,10 @@ BEGIN
             EQ  <= '0'; -- R45 BIT 1
             DIX <= '0'; -- R45 BIT 2
             DIY <= '0'; -- R45 BIT 3
---          MXS <= '0'; -- R45 BIT 4
---          MXD <= '0'; -- R45 BIT 5
+            MXS <= '0'; -- R45 BIT 4
+            MXD <= '0'; -- R45 BIT 5
+            MXC <= '0'; -- R45 BIT 6
+            VRAMACCESSEXP <= '0';
             CMR <= (OTHERS => '0'); -- R46
             SXTMP <= (OTHERS => '0');
             DXTMP <= (OTHERS => '0');
@@ -456,7 +464,9 @@ BEGIN
                         EQ  <= REGDATA(1);
                         DIX <= REGDATA(2);
                         DIY <= REGDATA(3);
---                      MXD <= REGDATA(5);
+                        MXS <= REGDATA(4);
+                        MXD <= REGDATA(5);
+                        MXC <= REGDATA(6);
                     WHEN "1110" =>      -- #46
                         -- INITIALIZE THE NEW COMMAND
                         -- NOTE THAT THIS WILL ABORT ANY ONGOING COMMAND!
@@ -531,6 +541,7 @@ BEGIN
                         VDPVRAMACCESSY := SY;
                         VDPVRAMACCESSX := SXTMP(8 DOWNTO 0);
                         RDXLOW := SXTMP(1 DOWNTO 0);
+                        VRAMACCESSEXP <= MXS;
                         VRAMRDREQ <= NOT VRAMRDACK;
                         CASE CMR(7 DOWNTO 4) IS
                             WHEN POINT =>
@@ -589,6 +600,7 @@ BEGIN
                         VDPVRAMACCESSY := DY;
                         VDPVRAMACCESSX := DXTMP(8 DOWNTO 0);
                         RDXLOW := DXTMP(1 DOWNTO 0);
+                        VRAMACCESSEXP <= MXD;
                         VRAMRDREQ <= NOT VRAMRDACK;
                         STATE <= STWAITPRERDVRAM;
 
@@ -628,6 +640,7 @@ BEGIN
                         -- APPLICABLE TO HMMC, YMMM, HMMM, HMMV, LMMC, LMMM, LMMV, LINE, PSET
                         VDPVRAMACCESSY := DY;
                         VDPVRAMACCESSX := DXTMP(8 DOWNTO 0);
+                        VRAMACCESSEXP <= MXD;
                         VRAMWRREQ <= NOT VRAMWRACK;
                         STATE <= STWAITWRVRAM;
 

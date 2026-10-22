@@ -24,6 +24,7 @@ module geneve_core #(
     input  logic [7:0]  rom_data,
     input  logic        boot200,       // run boot EPROM 2.00
     input  logic        ide_en,        // IDE card at CRU >1000
+    input  logic        vram192,       // 64 KiB V9938 expansion RAM (R#45 MXC/MXS/MXD), 192 KiB in all
 
     // DRAM (512 KiB) at 00000-7FFFF, IDE card SRAM (512 KiB) at 80000-FFFFF:
     // one request at a time, answered with dram_ack
@@ -374,10 +375,14 @@ logic [7:0]  vdp_dbi, vdp_dbo;
 logic        vdp_int_n;
 logic        pram_oe_n, pram_we_n;
 logic [16:0] pram_adr;
+logic        pram_exp;
 logic [15:0] pram_dbi;
 logic [7:0]  pram_dbo;
 logic [7:0]  vram_lo [0:65535];
 logic [7:0]  vram_hi [0:65535];
+logic [7:0]  vram_ex [0:65535];      // expansion RAM
+logic [7:0]  vram_lo_q, vram_hi_q, vram_ex_q;
+logic        pram_exp_d;
 
 assign vdp_int = !vdp_int_n;
 
@@ -402,7 +407,7 @@ VDP vdp_i (
     .CLK21M(clk), .RESET(reset || vdp_reset_pulse),
     .REQ(vdp_req), .ACK(vdp_ack), .WRT(vdp_wrt), .ADR({14'd0, vdp_port}),
     .DBI(vdp_dbi), .DBO(vdp_dbo), .INT_N(vdp_int_n),
-    .PRAMOE_N(pram_oe_n), .PRAMWE_N(pram_we_n), .PRAMADR(pram_adr),
+    .PRAMOE_N(pram_oe_n), .PRAMWE_N(pram_we_n), .PRAMADR(pram_adr), .PRAMEXP(pram_exp),
     .PRAMDBI(pram_dbi), .PRAMDBO(pram_dbo),
     .VDPSPEEDMODE(1'b0), .RATIOMODE(3'b000), .CENTERYJK_R25_N(1'b0),
     .PVIDEOR(vga_r), .PVIDEOG(vga_g), .PVIDEOB(vga_b),
@@ -414,13 +419,24 @@ VDP vdp_i (
     .MOUSE_BTN({mouse_btn[1], mouse_btn[0]})      // S#1 bit 7 middle (switch 2), bit 6 right (switch 1)
 );
 
+// Expansion RAM (MAME: 64 KiB at 20000; without it reads give FF and writes are lost). The VDP
+// picks its byte with PRAMADR(16), so the expansion byte goes out on both halves.
 always_ff @(posedge clk) begin
-    if (!pram_we_n) begin
+    if (!pram_we_n && !pram_exp) begin
         if (pram_adr[16]) vram_hi[pram_adr[15:0]] <= pram_dbo;
         else              vram_lo[pram_adr[15:0]] <= pram_dbo;
     end
-    pram_dbi <= {vram_hi[pram_adr[15:0]], vram_lo[pram_adr[15:0]]};
+    vram_hi_q <= vram_hi[pram_adr[15:0]];
+    vram_lo_q <= vram_lo[pram_adr[15:0]];
 end
+
+always_ff @(posedge clk) begin
+    if (!pram_we_n && pram_exp && vram192) vram_ex[pram_adr[15:0]] <= pram_dbo;
+    vram_ex_q <= vram_ex[pram_adr[15:0]];
+    pram_exp_d <= pram_exp;
+end
+
+assign pram_dbi = !pram_exp_d ? {vram_hi_q, vram_lo_q} : vram192 ? {vram_ex_q, vram_ex_q} : 16'hffff;
 
 //----------------------------------------------------------------------------
 // Peripheral box: Myarc DDCC-1

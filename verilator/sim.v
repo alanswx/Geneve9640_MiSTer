@@ -13,6 +13,7 @@ module top(
    input   [7:0] rom_data,
    input         boot200,
    input         ide_en,
+   input         vram192,
 
    // IDE disk image: hps_io sd_* of one drive
    input         ide_mounted,
@@ -148,6 +149,15 @@ always @(posedge clk) begin
 end
 `endif
 
+`ifdef VRAM_DEBUG
+reg vx_rd_d;
+always @(posedge clk) begin
+   vx_rd_d <= core.pram_exp && !core.pram_oe_n;
+   if (core.pram_exp && !core.pram_we_n) $display("VRAMX write %05x <- %02x (enabled %b)", core.pram_adr, core.pram_dbo, core.vram192);
+   if (vx_rd_d) $display("VRAMX read -> %04x", core.pram_dbi);
+end
+`endif
+
 `ifdef USE_SD
 wire        c_fdc_rd, c_fdc_wr, c_fdc_drive, c_fdc_ack, c_buf_wr;
 wire [15:0] c_fdc_lsn;
@@ -189,7 +199,7 @@ assign sd_buff_din0 = 0; assign sd_buff_din1 = 0;
 geneve_core core (
    .clk(clk), .reset(reset),
    .rom_wr(rom_wr && rom_addr < 20'h0a000), .rom_addr(rom_addr[15:0]), .rom_data(rom_data),
-   .boot200(boot200), .ide_en(ide_en),
+   .boot200(boot200), .ide_en(ide_en), .vram192(vram192),
    .dram_req(dram_req), .dram_we(dram_we), .dram_addr(dram_addr), .dram_wdata(dram_wdata),
    .dram_rdata(dram_rdata), .dram_ack(dram_ack),
    .vga_r(vga_r), .vga_g(vga_g), .vga_b(vga_b), .vga_hs_n(vga_hs_n), .vga_vs_n(vga_vs_n),

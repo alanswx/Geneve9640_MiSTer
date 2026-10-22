@@ -30,6 +30,7 @@ struct Options {
     std::string rom2;                      // --rom2 FILE: boot EPROM 2.00, run instead of --rom
     std::string ide, ide_sram;             // --ide IMAGE, --ide-sram FILE: IDE card with disk and SRAM
     bool        ide_log = false;
+    bool        vram192 = false;               // --vram192: 64 KiB V9938 expansion RAM
     std::string dsk[2];
     bool        dsk_readonly = false;
     uint32_t    frames = 60;
@@ -61,6 +62,7 @@ static void usage()
 "  --rom2 FILE            boot EPROM 2.00 (16 KiB), run instead of --rom\n"
 "  --ide IMAGE            IDE card at CRU >1000 with this disk (512-byte sector dump; written back)\n"
 "  --ide-sram FILE        IDE card SRAM contents (Kaal's IDE DSR, tools/mkidesram.py); --ide-log\n"
+"  --vram192              192 KiB video RAM (V9938 expansion RAM)\n"
 "  --frames N             stop after N video frames (default 60)\n"
 "  --cycles N             stop after N CPU cycles\n"
 "  --screenshot N         PNG of frame N (repeatable); --dump-every K: every Kth frame\n"
@@ -437,6 +439,7 @@ int Sim::run()
     // ROM download while in reset: 0000 boot ROM, 4000 DSR, 6000 boot ROM 2.00, 10000 IDE SRAM
     top->boot200 = !rom2.empty();
     top->ide_en = !opt.ide.empty() || !isram.empty();
+    top->vram192 = opt.vram192;
     for (int i = 0; i < 16384 + 8192; i++) {
         top->rom_wr = 1;
         top->rom_addr = i;
@@ -583,6 +586,7 @@ int main(int argc, char **argv)
         else if (a == "--ide") o.ide = next();
         else if (a == "--ide-sram") o.ide_sram = next();
         else if (a == "--ide-log") o.ide_log = true;
+        else if (a == "--vram192") o.vram192 = true;
         else if (a == "--dsk1") o.dsk[0] = next();
         else if (a == "--dsk2") o.dsk[1] = next();
         else if (a == "--dsk-readonly") o.dsk_readonly = true;

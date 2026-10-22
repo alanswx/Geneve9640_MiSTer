@@ -64,6 +64,7 @@ localparam CONF_STR = {
 	"-;",
 	"O[3],Boot ROM,1.00,2.00;",
 	"O[4],IDE card (CRU 1000),Off,On;",
+	"O[5],Video RAM,128K,192K;",
 	"-;",
 	"O[122:121],Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
 	"-;",
@@ -370,6 +371,7 @@ geneve_core core
 	.rom_data(ioctl_dout),
 	.boot200(status[3]),
 	.ide_en(status[4]),
+	.vram192(status[5]),
 
 	.dram_req(dram_req), .dram_we(dram_we), .dram_addr(dram_addr), .dram_wdata(dram_wdata),
 	.dram_rdata(dram_rdata), .dram_ack(dram_ack),
