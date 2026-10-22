@@ -97,10 +97,21 @@ always_comb begin
     end
 end
 
-// IDENTIFY DEVICE data: 16 heads, 63 sectors/track, LBA
-wire [31:0] chs_cyl_w = total / 32'd1008;
-wire [15:0] chs_cyl = (chs_cyl_w > 32'd16383) ? 16'd16383 : chs_cyl_w[15:0];
-wire [31:0] chs_cap = chs_cyl * 32'd1008;
+// IDENTIFY DEVICE data: 16 heads, 63 sectors/track, LBA. The cylinder count
+// (total / 1008, at most 16383) is counted out after a mount, not divided.
+logic [15:0] chs_cyl;
+logic [31:0] chs_cap, chs_rem;
+always_ff @(posedge clk) begin
+    if (img_mounted) begin
+        chs_cyl <= 16'd0;
+        chs_cap <= 32'd0;
+        chs_rem <= img_size[40:9];
+    end else if (chs_rem >= 32'd1008 && chs_cyl != 16'd16383) begin
+        chs_rem <= chs_rem - 32'd1008;
+        chs_cyl <= chs_cyl + 16'd1;
+        chs_cap <= chs_cap + 32'd1008;
+    end
+end
 
 function automatic [15:0] str2(input [7:0] i);     // "MISTER GENEVE IDE DISK", space padded
     logic [8*40-1:0] s;
