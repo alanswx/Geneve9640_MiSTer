@@ -25,7 +25,7 @@ VDP_SRC = $(addprefix $(RTL)/vdp/, vdp_package.vhd vdp_ram.vhd vdp_linebuf.vhd v
 GEN_V = $(GEN)/vdp.v
 
 V_SRC = sim.v $(RTL)/geneve_core.sv $(RTL)/tms9995/tms9995.sv $(RTL)/geneve_ga.sv $(RTL)/tms9901.sv \
-	$(RTL)/mm58274.sv $(RTL)/wd1770.sv $(RTL)/sn76496/sn76496.v $(GEN_V)
+	$(RTL)/mm58274.sv $(RTL)/wd1770.sv $(RTL)/ata_disk.sv $(RTL)/sn76496/sn76496.v $(GEN_V)
 
 V_OPT = -O3 -I$(RTL) -I$(RTL)/tms9995 --x-assign fast --x-initial fast --noassert \
 	-Wno-fatal -Wno-PINMISSING -Wno-WIDTH -Wno-UNOPTFLAT -Wno-CASEINCOMPLETE \

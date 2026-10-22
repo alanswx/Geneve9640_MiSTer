@@ -7,9 +7,24 @@ module top(
    input         clk /*verilator public_flat*/,
    input         reset /*verilator public_flat*/,
 
+   // ROM download: 00000-09FFF core ROMs (see geneve_core), 10000-8FFFF IDE card SRAM (into the DRAM model)
    input         rom_wr,
-   input  [14:0] rom_addr,
+   input  [19:0] rom_addr,
    input   [7:0] rom_data,
+   input         boot200,
+   input         ide_en,
+
+   // IDE disk image: hps_io sd_* of one drive
+   input         ide_mounted,
+   input  [63:0] ide_size,
+   output [31:0] ide_lba,
+   output        ide_rd,
+   output        ide_wr,
+   input         ide_ack,
+   input   [8:0] ide_buff_addr,
+   input   [7:0] ide_buff_dout,
+   output  [7:0] ide_buff_din,
+   input         ide_buff_wr,
 
    output  [5:0] vga_r /*verilator public_flat*/,
    output  [5:0] vga_g /*verilator public_flat*/,
@@ -78,11 +93,11 @@ assign dbg_waddr = core.bus_addr;
 assign dbg_wdata = core.bus_dout;
 
 wire        dram_req, dram_we;
-wire [18:0] dram_addr;
+wire [19:0] dram_addr;
 wire  [7:0] dram_wdata;
 reg   [7:0] dram_rdata;
 reg         dram_ack;
-reg   [7:0] dram [0:524287];
+reg   [7:0] dram [0:1048575];      // DRAM, then the IDE card SRAM
 
 `ifdef DRAM_DEBUG
 always @(posedge clk) if ((core.bus_as || core.bus_rs || core.bus_ack) && core.dbg_cycles > 4268600 && core.dbg_cycles < 4268700)
@@ -94,10 +109,12 @@ always @(posedge clk) if (dram_req && dram_addr < 19'h4) $display("DRAM %s %05x 
 `define DRAM_LAT 8
 `endif
 reg [4:0] dram_cnt = 0;
-reg [18:0] dram_a_r;
+reg [19:0] dram_a_r;
 reg dram_we_r;
 reg [7:0] dram_wd_r;
+wire [19:0] sram_load_a = rom_addr - 20'h10000 + 20'h80000;
 always @(posedge clk) begin
+   if (rom_wr && rom_addr >= 20'h10000) dram[sram_load_a] <= rom_data;
    dram_ack <= 1'b0;
    if (dram_req) begin
       dram_cnt <= `DRAM_LAT;
@@ -153,7 +170,8 @@ assign sd_buff_din0 = 0; assign sd_buff_din1 = 0;
 
 geneve_core core (
    .clk(clk), .reset(reset),
-   .rom_wr(rom_wr), .rom_addr(rom_addr), .rom_data(rom_data),
+   .rom_wr(rom_wr && rom_addr < 20'h0a000), .rom_addr(rom_addr[15:0]), .rom_data(rom_data),
+   .boot200(boot200), .ide_en(ide_en),
    .dram_req(dram_req), .dram_we(dram_we), .dram_addr(dram_addr), .dram_wdata(dram_wdata),
    .dram_rdata(dram_rdata), .dram_ack(dram_ack),
    .vga_r(vga_r), .vga_g(vga_g), .vga_b(vga_b), .vga_hs_n(vga_hs_n), .vga_vs_n(vga_vs_n),
@@ -163,6 +181,9 @@ geneve_core core (
    .joy1(joy1), .joy2(joy2),
    .rtc_load(rtc_load), .rtc_bcd(rtc_bcd),
    `FDC_PORTS
+   .ide_mounted(ide_mounted), .ide_readonly(1'b0), .ide_size(ide_size), .ide_lba(ide_lba), .ide_rd(ide_rd), .ide_wr(ide_wr),
+   .ide_ack(ide_ack), .ide_buff_addr(ide_buff_addr), .ide_buff_dout(ide_buff_dout), .ide_buff_din(ide_buff_din),
+   .ide_buff_wr(ide_buff_wr), .ide_busy(),
    .dbg_inst(dbg_inst), .dbg_pc(dbg_pc), .dbg_wp(dbg_wp), .dbg_st(dbg_st), .dbg_ir(dbg_ir), .dbg_op1(dbg_op1), .dbg_op2(dbg_op2), .dbg_cycles(dbg_cycles)
 );
 

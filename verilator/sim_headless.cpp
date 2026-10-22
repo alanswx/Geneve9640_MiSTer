@@ -27,6 +27,9 @@ static const double CLK_HZ = 21477272.0;
 struct Options {
     std::string rom = "roms/genbt100.bin";
     std::string dsr = "roms/ddcc1.u3";
+    std::string rom2;                      // --rom2 FILE: boot EPROM 2.00, run instead of --rom
+    std::string ide, ide_sram;             // --ide IMAGE, --ide-sram FILE: IDE card with disk and SRAM
+    bool        ide_log = false;
     std::string dsk[2];
     bool        dsk_readonly = false;
     uint32_t    frames = 60;
@@ -53,6 +56,9 @@ static void usage()
 "  --rom FILE             boot EPROM, 16 KiB (default roms/genbt100.bin)\n"
 "  --dsr FILE             DDCC-1 DSR, 8 KiB (default roms/ddcc1.u3)\n"
 "  --dsk1 FILE / --dsk2 FILE  V9T9 sector images in DSK1 / DSK2; --dsk-readonly: never write them back\n"
+"  --rom2 FILE            boot EPROM 2.00 (16 KiB), run instead of --rom\n"
+"  --ide IMAGE            IDE card at CRU >1000 with this disk (512-byte sector dump; written back)\n"
+"  --ide-sram FILE        IDE card SRAM contents (Kaal's IDE DSR, tools/mkidesram.py); --ide-log\n"
 "  --frames N             stop after N video frames (default 60)\n"
 "  --cycles N             stop after N CPU cycles\n"
 "  --screenshot N         PNG of frame N (repeatable); --dump-every K: every Kth frame\n"
@@ -182,6 +188,11 @@ private:
     void video();
     void floppy();
     void sdcard();
+    void idedisk();
+    Disk ide;
+    int ide_state = 0, ide_pos = 0;
+    bool ide_write = false, ide_mounted = false;
+    uint32_t ide_blk = 0;
     int sd_state = 0, sd_drv = 0, sd_pos = 0;
     bool sd_write = false, sd_mount_pending = true;
     unsigned sd_mounted = 0;
@@ -296,6 +307,50 @@ void Sim::sdcard()
     }
 }
 
+// hps_io's SD block protocol for the IDE drive (rtl/ata_disk.sv)
+void Sim::idedisk()
+{
+    top->ide_mounted = 0;
+    top->ide_buff_wr = 0;
+    if (!ide.present) return;
+    if (!ide_mounted) {
+        top->ide_mounted = 1;
+        top->ide_size = ide.data.size();
+        ide_mounted = true;
+        return;
+    }
+    switch (ide_state) {
+    case 0:
+        if (top->ide_rd || top->ide_wr) {
+            ide_write = top->ide_wr;
+            ide_blk = top->ide_lba;
+            ide_pos = 0;
+            ide_state = 1;
+            top->ide_ack = 1;
+            if (opt.ide_log) fprintf(stderr, "ide %s lba %u (frame %u)\n", ide_write ? "write" : "read", ide_blk, frame);
+        }
+        break;
+    case 1: {
+        size_t off = (size_t)ide_blk * 512 + ide_pos;
+        top->ide_buff_addr = ide_pos;
+        if (!ide_write) {
+            top->ide_buff_dout = off < ide.data.size() ? ide.data[off] : 0;
+            top->ide_buff_wr = 1;
+        } else if (ide_pos > 0) {
+            size_t o = (size_t)ide_blk * 512 + ide_pos - 1;
+            if (o < ide.data.size()) ide.data[o] = top->ide_buff_din;
+            ide.dirty = true;
+        }
+        if (++ide_pos == (ide_write ? 513 : 512)) ide_state = 2;
+        break;
+    }
+    case 2:
+        top->ide_ack = 0;
+        ide_state = 0;
+        break;
+    }
+}
+
 void Sim::floppy()
 {
     top->fdc_ack = 0;
@@ -343,6 +398,14 @@ int Sim::run()
     std::vector<uint8_t> rom, dsr;
     if (!load_file(opt.rom, rom) || rom.size() != 16384) { fprintf(stderr, "cannot load boot ROM %s\n", opt.rom.c_str()); return 1; }
     if (!load_file(opt.dsr, dsr) || dsr.size() != 8192) { fprintf(stderr, "cannot load DSR %s\n", opt.dsr.c_str()); return 1; }
+    std::vector<uint8_t> rom2, isram;
+    if (!opt.rom2.empty() && (!load_file(opt.rom2, rom2) || rom2.size() != 16384)) { fprintf(stderr, "cannot load boot ROM %s\n", opt.rom2.c_str()); return 1; }
+    if (!opt.ide_sram.empty() && !load_file(opt.ide_sram, isram)) { fprintf(stderr, "cannot load %s\n", opt.ide_sram.c_str()); return 1; }
+    if (!opt.ide.empty()) {
+        ide.name = opt.ide;
+        if (!load_file(opt.ide, ide.data)) { fprintf(stderr, "cannot open %s\n", opt.ide.c_str()); return 1; }
+        ide.present = true;
+    }
     for (int i = 0; i < 2; i++)
         if (!opt.dsk[i].empty()) {
             if (!disk[i].open(opt.dsk[i])) { fprintf(stderr, "cannot open %s\n", opt.dsk[i].c_str()); return 1; }
@@ -366,11 +429,25 @@ int Sim::run()
     top->rtc_bcd = 0x03261021150000ULL;
     top->rtc_bcd = (0x03ULL << 48) | (0x26ULL << 40) | (0x10ULL << 32) | (0x21ULL << 24) | (0x15ULL << 16);
 
-    // ROM download while in reset
+    // ROM download while in reset: 0000 boot ROM, 4000 DSR, 6000 boot ROM 2.00, 10000 IDE SRAM
+    top->boot200 = !rom2.empty();
+    top->ide_en = !opt.ide.empty() || !isram.empty();
     for (int i = 0; i < 16384 + 8192; i++) {
         top->rom_wr = 1;
         top->rom_addr = i;
         top->rom_data = i < 16384 ? rom[i] : dsr[i - 16384];
+        tick();
+    }
+    for (size_t i = 0; i < rom2.size(); i++) {
+        top->rom_wr = 1;
+        top->rom_addr = 0x6000 + i;
+        top->rom_data = rom2[i];
+        tick();
+    }
+    for (size_t i = 0; i < isram.size() && i < 0x80000; i++) {
+        top->rom_wr = 1;
+        top->rom_addr = 0x10000 + i;
+        top->rom_data = isram[i];
         tick();
     }
     top->rom_wr = 0;
@@ -396,6 +473,7 @@ int Sim::run()
 #else
         floppy();
 #endif
+        idedisk();
 
         if (!opt.wav_file.empty()) {
             wav_acc += 48000.0;
@@ -453,6 +531,10 @@ int Sim::run()
         }
     }
 
+    if (ide.dirty) {
+        FILE *f = fopen(ide.name.c_str(), "wb");
+        if (f) { fwrite(ide.data.data(), 1, ide.data.size(), f); fclose(f); }
+    }
     for (int i = 0; i < 2; i++)
         if (disk[i].dirty && !opt.dsk_readonly) {
             FILE *f = fopen(disk[i].name.c_str(), "wb");
@@ -476,6 +558,10 @@ int main(int argc, char **argv)
         if (a == "--help" || a == "-h") { usage(); return 0; }
         else if (a == "--rom") o.rom = next();
         else if (a == "--dsr") o.dsr = next();
+        else if (a == "--rom2") o.rom2 = next();
+        else if (a == "--ide") o.ide = next();
+        else if (a == "--ide-sram") o.ide_sram = next();
+        else if (a == "--ide-log") o.ide_log = true;
         else if (a == "--dsk1") o.dsk[0] = next();
         else if (a == "--dsk2") o.dsk[1] = next();
         else if (a == "--dsk-readonly") o.dsk_readonly = true;

@@ -2,9 +2,10 @@
 //  Geneve 9640 machine
 //
 //  TMS9995 CPU, Gate Array + PAL, TMS9901, V9938 (ESE VDP), SN76496,
-//  MM58274 RTC, 32+32 KiB SRAM, 16 KiB boot EPROM, 128 KiB VRAM, and the
-//  peripheral box with a Myarc DDCC-1 floppy controller. The 512 KiB DRAM is
-//  outside (dram_* port), so the MiSTer top can put it in SDRAM.
+//  MM58274 RTC, 32+32 KiB SRAM, 16 KiB boot EPROM (1.00 or 2.00), 128 KiB
+//  VRAM, and the peripheral box with a Myarc DDCC-1 floppy controller and a
+//  Nouspikel IDE card. The 512 KiB DRAM and the IDE card's 512 KiB SRAM are
+//  outside (dram_* port), so the MiSTer top can put them in SDRAM.
 //
 //  Board behaviour follows MAME's geneve.cpp / genboard.cpp (Michael Zapf).
 //  clk is the V9938 clock (21.477 MHz); the CPU CLKOUT (3 MHz = 12 MHz/4) is
@@ -17,15 +18,18 @@ module geneve_core #(
     input  logic        clk,
     input  logic        reset,
 
-    // ROM download: 0000-3FFF boot EPROM, 4000-5FFF DDCC-1 DSR
+    // ROM download: 0000-3FFF boot EPROM 1.00, 4000-5FFF DDCC-1 DSR, 6000-9FFF boot EPROM 2.00
     input  logic        rom_wr,
-    input  logic [14:0] rom_addr,
+    input  logic [15:0] rom_addr,
     input  logic [7:0]  rom_data,
+    input  logic        boot200,       // run boot EPROM 2.00
+    input  logic        ide_en,        // IDE card at CRU >1000
 
-    // DRAM (512 KiB): one request at a time, answered with dram_ack
+    // DRAM (512 KiB) at 00000-7FFFF, IDE card SRAM (512 KiB) at 80000-FFFFF:
+    // one request at a time, answered with dram_ack
     output logic        dram_req,
     output logic        dram_we,
-    output logic [18:0] dram_addr,
+    output logic [19:0] dram_addr,
     output logic [7:0]  dram_wdata,
     input  logic [7:0]  dram_rdata,
     input  logic        dram_ack,
@@ -72,6 +76,20 @@ module geneve_core #(
     input  logic [7:0]  fdc_buf_addr,
     input  logic [7:0]  fdc_buf_din,
     output logic [7:0]  fdc_buf_dout,
+
+    // IDE disk image (hps_io sd_* of one drive): see ata_disk.sv
+    input  logic        ide_mounted,
+    input  logic        ide_readonly,
+    input  logic [63:0] ide_size,
+    output logic [31:0] ide_lba,
+    output logic        ide_rd,
+    output logic        ide_wr,
+    input  logic        ide_ack,
+    input  logic [8:0]  ide_buff_addr,
+    input  logic [7:0]  ide_buff_dout,
+    output logic [7:0]  ide_buff_din,
+    input  logic        ide_buff_wr,
+    output logic        ide_busy,
 
     // Debug: instruction trace
     output logic        dbg_inst,
@@ -174,7 +192,6 @@ tms9901 psi (
 
 assign int1 = intreq;
 assign int4 = inta;
-assign inta = 1'b0;                        // no PEB card raises INTA yet
 assign intb = 1'b0;
 
 //----------------------------------------------------------------------------
@@ -272,10 +289,10 @@ always_ff @(posedge clk) begin
 end
 
 //----------------------------------------------------------------------------
-// Memories: SRAM (stock + expansion, 64 KiB), boot EPROM, DDCC-1 DSR
+// Memories: SRAM (stock + expansion, 64 KiB), boot EPROMs, DDCC-1 DSR
 //----------------------------------------------------------------------------
 logic [7:0] sram  [0:65535];
-logic [7:0] eprom [0:16383];
+logic [7:0] eprom [0:32767];
 logic [7:0] dsr   [0:8191];
 logic [7:0] fdcram [0:2047];
 logic [7:0] sram_q, eprom_q, dsr_q, fdcram_q;
@@ -291,13 +308,15 @@ always_ff @(posedge clk) begin
     sram_q <= sram[sram_a];
 end
 
+wire [15:0] rom_addr2 = rom_addr - 16'h6000;
 always_ff @(posedge clk) begin
-    if (rom_wr && !rom_addr[14]) eprom[rom_addr[13:0]] <= rom_data;
-    eprom_q <= eprom[{physpage[0], bus_addr[12:0]}];
+    if (rom_wr && rom_addr < 16'h4000) eprom[{1'b0, rom_addr[13:0]}] <= rom_data;
+    if (rom_wr && rom_addr >= 16'h6000 && rom_addr < 16'ha000) eprom[{1'b1, rom_addr2[13:0]}] <= rom_data;
+    eprom_q <= eprom[{boot200, physpage[0], bus_addr[12:0]}];
 end
 
 always_ff @(posedge clk) begin
-    if (rom_wr && rom_addr[14:13] == 2'b10) dsr[rom_addr[12:0]] <= rom_data;
+    if (rom_wr && rom_addr[15:13] == 3'b010) dsr[rom_addr[12:0]] <= rom_data;
     dsr_q <= dsr[{fdc_latch[3], box_addr[11:0]}];
 end
 
@@ -431,6 +450,71 @@ wd1770 #(.CLK_HZ(CLK_HZ)) wdc (
 );
 
 //----------------------------------------------------------------------------
+// Peripheral box: Nouspikel IDE card (MAME tn_ide.cpp), Geneve mode, CRU >1000
+//
+// No ROM: the DSR (Fred Kaal's IDE DSR) lives in the 512 KiB SRAM, preloaded by
+// the MiSTer top as IDELOAD would leave it. SRAM map DIP = SRAM, clock = bq4847.
+// LS259 latch: 0 card on, 1 registers at 4000-40FF, 2 SRAM page select on write,
+// 3 0 = page 0 fixed at 4000-4FFF, 4 SRAM at 6000-7FFF, 5 SRAM write protect,
+// 6 IDE interrupt to INTA, 7 drive reset.
+// 4020-403F: bq4847 registers; 4040-405F: CS1Fx, 4060-407F: CS3Fx, through
+// 16-bit latches: the even byte (first access) is D7-D0, the odd one D15-D8.
+//----------------------------------------------------------------------------
+logic [7:0]  ide_q;
+logic [5:0]  ide_page;
+logic [15:0] ide_rlatch, ide_wlatch;
+logic        ata_rd, ata_wr;
+logic        ata_scs1;
+logic [2:0]  ata_sreg;
+logic [15:0] ata_wdata, ata_rdata;
+logic        ata_intrq;
+logic [55:0] ide_time;
+
+wire ide_space = ide_en && box_sel && !box_addr[15];
+wire ide_mmap  = ide_space && box_addr[14:8] == 7'h40 && ide_q[0] && ide_q[1];
+wire ide_sram  = ide_space && ((box_addr[14:13] == 2'b10 && !ide_mmap && ide_q[0])
+                               || (box_addr[14:13] == 2'b11 && ide_q[4]));
+wire ide_rtc   = ide_mmap && box_addr[6:5] == 2'b01;
+wire ide_ata   = ide_mmap && box_addr[6];
+wire ide_cru   = ide_en && cru_addr[15:8] == 8'h10;
+wire [5:0] ide_pg = (box_addr[13:12] == 2'b00 && !ide_q[3]) ? 6'd0 : ide_page;
+
+assign inta = ide_q[6] && ata_intrq;
+
+// bq4847 registers from the MiSTer RTC (not running: the time of the last load)
+always_ff @(posedge clk) if (rtc_load) ide_time <= rtc_bcd;
+
+function automatic [7:0] bq4847(input [3:0] r);
+    case (r)
+    4'd0:  bq4847 = ide_time[7:0];
+    4'd2:  bq4847 = ide_time[15:8];
+    4'd4:  bq4847 = ide_time[23:16];
+    4'd6:  bq4847 = ide_time[31:24];
+    4'd8:  bq4847 = ide_time[55:48];
+    4'd9:  bq4847 = ide_time[39:32];
+    4'd10: bq4847 = ide_time[47:40];
+    4'd14: bq4847 = 8'h02;                 // 24-hour mode
+    default: bq4847 = 8'h00;
+    endcase
+endfunction
+
+ata_disk ata (
+    .clk(clk), .reset(reset),
+    .a_cs1(box_addr[5]), .a_reg(box_addr[3:1]), .rdata(ata_rdata),
+    .rd(ata_rd), .wr(ata_wr), .s_cs1(ata_scs1), .s_reg(ata_sreg), .wdata(ata_wdata),
+    .intrq(ata_intrq),
+    .img_mounted(ide_mounted), .img_readonly(ide_readonly), .img_size(ide_size),
+    .sd_lba(ide_lba), .sd_rd(ide_rd), .sd_wr(ide_wr), .sd_ack(ide_ack),
+    .sd_buff_addr(ide_buff_addr), .sd_buff_dout(ide_buff_dout), .sd_buff_din(ide_buff_din), .sd_buff_wr(ide_buff_wr),
+    .busy(ide_busy)
+);
+
+// DRAM-like accesses (through SDRAM): the DRAM proper and the IDE card SRAM
+wire        mem_sel  = (func == F_DRAM || func == F_GROM) || ide_sram;
+wire        mem_wsel = (func == F_DRAM || func == F_GROM) || (ide_sram && !ide_q[5]);
+wire [19:0] mem_addr = ide_sram ? {1'b1, ide_pg, box_addr[12:0]} : {1'b0, ga_dram_addr};
+
+//----------------------------------------------------------------------------
 // Bus cycle handling
 //----------------------------------------------------------------------------
 typedef enum logic [2:0] { B_IDLE, B_READ, B_WRITE, B_VDP, B_DRAM, B_ACK } bstate_t;
@@ -445,10 +529,10 @@ logic        dbusy_rd;       // ... and it is a read
 logic        pf_valid;       // read-ahead data for the current access
 logic [7:0]  pf_data;
 logic        rd_want;        // read-ahead wanted (DRAM was busy)
-logic [18:0] rd_addr;
+logic [19:0] rd_addr;
 logic        rs_wait;        // the read phase came before the data
 logic        wq;             // a write waiting for the DRAM
-logic [18:0] wq_addr;
+logic [19:0] wq_addr;
 logic [7:0]  wq_data;
 
 always_ff @(posedge clk) begin
@@ -464,12 +548,16 @@ always_ff @(posedge clk) begin
     dram_req <= 1'b0;
     sram_we <= 1'b0;
     fdcram_we <= 1'b0;
+    ata_rd <= 1'b0;
+    ata_wr <= 1'b0;
 
     if (reset) begin
         bst <= B_IDLE;
         pend_write <= 1'b0;
         pend_rdaddr <= 1'b0;
         fdc_latch <= 8'd0;
+        ide_q <= 8'd0;
+        ide_page <= 6'd0;
         dbusy <= 1'b0;
         dbusy_rd <= 1'b0;
         pf_valid <= 1'b0;
@@ -489,12 +577,25 @@ always_ff @(posedge clk) begin
                 vdp_port <= bus_addr[2:1];
                 vdp_dbo <= bus_dout;
                 bst <= B_VDP;
-            end else if (func == F_DRAM || func == F_GROM) begin
+            end else if (mem_wsel) begin
                 // posted: queued, acknowledged when the DRAM takes it (below)
                 wq <= 1'b1;
-                wq_addr <= ga_dram_addr;
+                wq_addr <= mem_addr;
                 wq_data <= bus_dout;
+                if (ide_sram && ide_q[2]) ide_page <= box_addr[6:1];
             end else begin
+                if (ide_sram && ide_q[2]) ide_page <= box_addr[6:1];
+                if (ide_ata) begin
+                    if (!box_addr[0])
+                        ide_wlatch[7:0] <= bus_dout;
+                    else begin
+                        // second access: the 16-bit write goes out
+                        ata_wr <= 1'b1;
+                        ata_scs1 <= box_addr[5];
+                        ata_sreg <= box_addr[3:1];
+                        ata_wdata <= {bus_dout, ide_wlatch[7:0]};
+                    end
+                end
                 if (func == F_SOUND) snd_we <= 1'b1;
                 if (func == F_CLOCK) rtc_wr <= 1'b1;
                 if (func == F_SRAM || func == F_SRAMX) sram_we <= 1'b1;
@@ -511,7 +612,7 @@ always_ff @(posedge clk) begin
                 vdp_wrt <= 1'b0;
                 vdp_port <= bus_addr[2:1];
                 bst <= B_VDP;
-            end else if (func == F_DRAM || func == F_GROM) begin
+            end else if (mem_sel) begin
                 if (pf_valid) begin
                     bus_din <= pf_data;
                     bus_ack <= 1'b1;
@@ -534,6 +635,22 @@ always_ff @(posedge clk) begin
                 if (ddcc_fdc) begin
                     v = wd_dout;
                     wd_rd <= 1'b1;
+                end
+                if (ide_rtc) v = bq4847(box_addr[4:1]);
+                if (ide_ata) begin
+                    if (!box_addr[0]) begin
+                        // first access: the 16-bit read (not in the write half: read-before-write)
+                        logic [15:0] l;
+                        l = box_addr[4] ? 16'h0000 : ata_rdata;
+                        ide_rlatch <= l;
+                        if (!box_addr[4]) begin
+                            ata_rd <= 1'b1;
+                            ata_scs1 <= box_addr[5];
+                            ata_sreg <= box_addr[3:1];
+                        end
+                        v = l[7:0];
+                    end else
+                        v = ide_rlatch[15:8];
                 end
                 bus_din <= v;
                 bus_ack <= 1'b1;
@@ -559,10 +676,10 @@ always_ff @(posedge clk) begin
             if (pend_rdaddr) begin
                 // a new access: the read-ahead belongs to it if it is a DRAM read
                 valid = 1'b0;
-                want = (func == F_DRAM || func == F_GROM);
-                rd_addr <= ga_dram_addr;
+                want = mem_sel;
+                rd_addr <= mem_addr;
             end
-            if (pend_write && (func == F_DRAM || func == F_GROM)) wqv = 1'b1;
+            if (pend_write && mem_wsel) wqv = 1'b1;
             if (dram_ack) begin
                 busy = 1'b0;
                 if (dbusy_rd && !pend_rdaddr) begin
@@ -603,9 +720,13 @@ always_ff @(posedge clk) begin
         // CRU
         if (cru_wr) begin
             if (ddcc_cru) fdc_latch[cru_addr[3:1]] <= cru_dout;
+            if (ide_cru) ide_q[cru_addr[3:1]] <= cru_dout;
             bus_ack <= 1'b1;
         end
-        if (box_reset_pulse) fdc_latch <= 8'd0;
+        if (box_reset_pulse) begin
+            fdc_latch <= 8'd0;
+            ide_q <= 8'd0;
+        end
         if (cru_rd) begin
             if (cru_addr[15:6] == 10'd0) cru_din <= rd9901;
             else if (ddcc_cru) begin
@@ -615,6 +736,15 @@ always_ff @(posedge clk) begin
                 3'd2: cru_din <= 1'b0;        // turbo switch off
                 3'd3: cru_din <= 1'b0;
                 default: cru_din <= 1'b1;     // head step switches open (6 ms)
+                endcase
+            end else if (ide_cru) begin
+                case (cru_addr[3:1])
+                3'd0: cru_din <= ata_intrq;
+                3'd1: cru_din <= 1'b1;        // SRAM map DIP
+                3'd3: cru_din <= 1'b1;
+                3'd4: cru_din <= ide_q[4];
+                3'd5: cru_din <= ide_q[5];
+                default: cru_din <= 1'b0;
                 endcase
             end
             bus_ack <= 1'b1;

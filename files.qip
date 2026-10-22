@@ -6,6 +6,7 @@ set_global_assignment -name SYSTEMVERILOG_FILE rtl/tms9901.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/mm58274.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/wd1770.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/geneve_disk.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/ata_disk.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/ps2_xt.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/geneve_core.sv
 set_global_assignment -name VERILOG_FILE rtl/sn76496/sn76496.v

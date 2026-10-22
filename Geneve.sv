@@ -56,10 +56,14 @@ assign VIDEO_ARY = (!ar) ? 12'd3 : 12'd0;
 localparam CONF_STR = {
 	"Geneve;;",
 	"-;",
-	"-,Needs games/Geneve/boot.rom (boot EPROM + DDCC-1 DSR);",
+	"-,Needs games/Geneve/boot.rom (boot EPROMs, DSRs);",
 	"-;",
 	"S0,DSK,DSK1;",
 	"S1,DSK,DSK2;",
+	"S2,HDVRAWIMG,IDE disk;",
+	"-;",
+	"O[3],Boot ROM,1.00,2.00;",
+	"O[4],IDE card (CRU 1000),Off,On;",
 	"-;",
 	"O[122:121],Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
 	"-;",
@@ -101,17 +105,18 @@ wire         ioctl_wr;
 wire  [26:0] ioctl_addr;
 wire   [7:0] ioctl_dout;
 
-wire   [1:0] img_mounted;
+wire   [2:0] img_mounted;
 wire         img_readonly;
 wire  [63:0] img_size;
-wire  [31:0] sd_lba[2];
-wire   [1:0] sd_rd, sd_wr, sd_ack;
+wire  [31:0] sd_lba[3];
+wire   [2:0] sd_rd, sd_wr, sd_ack;
 wire   [8:0] sd_buff_addr;
 wire   [7:0] sd_buff_dout;
-wire   [7:0] sd_buff_din[2];
+wire   [7:0] sd_buff_din[3];
 wire         sd_buff_wr;
+wire         ld_busy;
 
-hps_io #(.CONF_STR(CONF_STR), .VDNUM(2)) hps_io
+hps_io #(.CONF_STR(CONF_STR), .VDNUM(3)) hps_io
 (
 	.clk_sys(clk_sys),
 	.HPS_BUS(HPS_BUS),
@@ -133,13 +138,13 @@ hps_io #(.CONF_STR(CONF_STR), .VDNUM(2)) hps_io
 	.ioctl_wr(ioctl_wr),
 	.ioctl_addr(ioctl_addr),
 	.ioctl_dout(ioctl_dout),
-	.ioctl_wait(1'b0),
+	.ioctl_wait(ld_busy),
 
 	.img_mounted(img_mounted),
 	.img_readonly(img_readonly),
 	.img_size(img_size),
 	.sd_lba(sd_lba),
-	.sd_blk_cnt('{6'd0, 6'd0}),
+	.sd_blk_cnt('{6'd0, 6'd0, 6'd0}),
 	.sd_rd(sd_rd),
 	.sd_wr(sd_wr),
 	.sd_ack(sd_ack),
@@ -157,21 +162,34 @@ wire reset = RESET | status[0] | buttons[1] | ioctl_download | ~pll_locked;
 
 // The core asks for one byte at a time on clk_sys (dram_req, one clk) and
 // waits for dram_ack. The controller runs on clk_mem = 4 x clk_sys (same PLL).
+// 00000-7FFFF: DRAM, 80000-FFFFF: IDE card SRAM, loaded from boot.rom 10000-8FFFF
+// during the download (the core is in reset then).
 wire        dram_req, dram_we;
-wire [18:0] dram_addr;
+wire [19:0] dram_addr;
 wire  [7:0] dram_wdata;
 reg   [7:0] dram_rdata;
 reg         dram_ack;
 
 reg         sd_req_t = 0, sd_done_t = 0;     // toggles: clk_sys -> clk_mem, clk_mem -> clk_sys
 reg         sd_we_r;
-reg  [18:0] sd_addr_r;
+reg  [19:0] sd_addr_r;
 reg   [7:0] sd_wdata_r;
+reg         ld_pend = 0;
+
+wire        ld_sram = ioctl_download && ioctl_wr && ioctl_index == 16'd0 && ioctl_addr >= 27'h10000 && ioctl_addr < 27'h90000;
+wire [19:0] ld_addr = ioctl_addr[19:0] - 20'h10000 + 20'h80000;
+assign      ld_busy = ld_pend;
 
 always @(posedge clk_sys) begin
 	reg done_old;
 	dram_ack <= 0;
-	if (dram_req) begin
+	if (ld_sram) begin
+		ld_pend <= 1;
+		sd_req_t <= ~sd_req_t;
+		sd_we_r <= 1;
+		sd_addr_r <= ld_addr;
+		sd_wdata_r <= ioctl_dout;
+	end else if (dram_req) begin
 		sd_req_t <= ~sd_req_t;
 		sd_we_r <= dram_we;
 		sd_addr_r <= dram_addr;
@@ -179,8 +197,12 @@ always @(posedge clk_sys) begin
 	end
 	done_old <= sd_done_t;
 	if (done_old != sd_done_t) begin
-		dram_ack <= 1;
-		dram_rdata <= sdram_dout_r;
+		if (ld_pend)
+			ld_pend <= 0;
+		else begin
+			dram_ack <= 1;
+			dram_rdata <= sdram_dout_r;
+		end
 	end
 end
 
@@ -220,7 +242,7 @@ sdram sdram
 	.SDRAM_nCS(SDRAM_nCS), .SDRAM_nWE(SDRAM_nWE), .SDRAM_nRAS(SDRAM_nRAS), .SDRAM_nCAS(SDRAM_nCAS),
 	.SDRAM_CKE(SDRAM_CKE), .SDRAM_CLK(SDRAM_CLK),
 	.wtbt(2'b00),
-	.addr({6'd0, sd_addr_r}),
+	.addr({5'd0, sd_addr_r}),
 	.dout(sdram_dout),
 	.din({8'h00, sd_wdata_r}),
 	.we(sdram_we),
@@ -259,22 +281,33 @@ wire  [7:0] fdc_buf_addr, fdc_buf_din, fdc_buf_dout;
 wire  [1:0] fdc_ready, fdc_wprot;
 wire  [1:0][7:0] fdc_spt, fdc_tracks;
 wire  [1:0][1:0] fdc_sides;
-wire        disk_busy;
+wire        disk_busy, ide_busy;
+wire [31:0] fd_lba[2];
+wire  [7:0] fd_buff_din[2];
+wire  [1:0] fd_rd, fd_wr;
+wire        ide_rd, ide_wr;
+
+assign sd_lba[0] = fd_lba[0];
+assign sd_lba[1] = fd_lba[1];
+assign sd_buff_din[0] = fd_buff_din[0];
+assign sd_buff_din[1] = fd_buff_din[1];
+assign sd_rd = {ide_rd, fd_rd};
+assign sd_wr = {ide_wr, fd_wr};
 
 geneve_disk disk
 (
 	.clk(clk_sys),
 	.reset(~pll_locked),
-	.img_mounted(img_mounted), .img_readonly(img_readonly), .img_size(img_size),
-	.sd_lba(sd_lba), .sd_rd(sd_rd), .sd_wr(sd_wr), .sd_ack(sd_ack),
-	.sd_buff_addr(sd_buff_addr), .sd_buff_dout(sd_buff_dout), .sd_buff_din(sd_buff_din), .sd_buff_wr(sd_buff_wr),
+	.img_mounted(img_mounted[1:0]), .img_readonly(img_readonly), .img_size(img_size),
+	.sd_lba(fd_lba), .sd_rd(fd_rd), .sd_wr(fd_wr), .sd_ack(sd_ack[1:0]),
+	.sd_buff_addr(sd_buff_addr), .sd_buff_dout(sd_buff_dout), .sd_buff_din(fd_buff_din), .sd_buff_wr(sd_buff_wr),
 	.ready(fdc_ready), .wprot(fdc_wprot), .spt(fdc_spt), .tracks(fdc_tracks), .sides(fdc_sides),
 	.img_rd(fdc_rd), .img_wr(fdc_wr), .img_lsn(fdc_lsn), .img_drive(fdc_drive), .img_ack(fdc_ack),
 	.buf_wr(fdc_buf_wr), .buf_addr(fdc_buf_addr), .buf_din(fdc_buf_din), .buf_dout(fdc_buf_dout),
 	.busy(disk_busy)
 );
 
-assign LED_DISK = {1'b0, disk_busy};
+assign LED_DISK = {1'b0, disk_busy | ide_busy};
 
 /////////////////  DEBUG UART  //////////////////
 
@@ -310,9 +343,11 @@ geneve_core core
 	.clk(clk_sys),
 	.reset(reset),
 
-	.rom_wr(ioctl_download && ioctl_wr && ioctl_index == 16'd0 && ioctl_addr < 27'h6000),
-	.rom_addr(ioctl_addr[14:0]),
+	.rom_wr(ioctl_download && ioctl_wr && ioctl_index == 16'd0 && ioctl_addr < 27'ha000),
+	.rom_addr(ioctl_addr[15:0]),
 	.rom_data(ioctl_dout),
+	.boot200(status[3]),
+	.ide_en(status[4]),
 
 	.dram_req(dram_req), .dram_we(dram_we), .dram_addr(dram_addr), .dram_wdata(dram_wdata),
 	.dram_rdata(dram_rdata), .dram_ack(dram_ack),
@@ -331,6 +366,11 @@ geneve_core core
 	.fdc_ready(fdc_ready), .fdc_wprot(fdc_wprot), .fdc_spt(fdc_spt), .fdc_tracks(fdc_tracks), .fdc_sides(fdc_sides),
 	.fdc_rd(fdc_rd), .fdc_wr(fdc_wr), .fdc_lsn(fdc_lsn), .fdc_drive(fdc_drive), .fdc_ack(fdc_ack),
 	.fdc_buf_wr(fdc_buf_wr), .fdc_buf_addr(fdc_buf_addr), .fdc_buf_din(fdc_buf_din), .fdc_buf_dout(fdc_buf_dout),
+
+	.ide_mounted(img_mounted[2]), .ide_readonly(img_readonly), .ide_size(img_size),
+	.ide_lba(sd_lba[2]), .ide_rd(ide_rd), .ide_wr(ide_wr), .ide_ack(sd_ack[2]),
+	.ide_buff_addr(sd_buff_addr), .ide_buff_dout(sd_buff_dout), .ide_buff_din(sd_buff_din[2]),
+	.ide_buff_wr(sd_buff_wr && sd_ack[2]), .ide_busy(ide_busy),
 
 	.dbg_inst(), .dbg_pc(dbg_pc), .dbg_wp(), .dbg_st(), .dbg_ir(), .dbg_op1(), .dbg_op2(), .dbg_cycles(dbg_cycles)
 );
