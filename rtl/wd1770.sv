@@ -12,6 +12,10 @@
 //
 //  Single density (dden_n = 1) finds sectors only on 9-sector images,
 //  double density only on 16/18-sector images, as on the real medium.
+//  Write track (format) parses the ID fields of the track; from then on the
+//  drive uses the formatted geometry (sectors per track, density, tracks,
+//  sides) instead of the mounted one, until the image changes. The image
+//  keeps its old data in the formatted sectors.
 //  Head stepping and the sector search take a short fixed time; data bytes
 //  are offered at once (DRQ) and never get lost.
 //============================================================================
@@ -74,11 +78,29 @@ logic [7:0]  rdaddr_sec;
 logic [12:0] trkcnt;
 logic        stepped;
 
+// geometry from formatting (write track), per drive
+logic [1:0]       fmt_on;
+logic [1:0][7:0]  fmt_spt, fmt_tracks;
+logic [1:0][1:0]  fmt_sides;
+logic [1:0]       fmt_dd;
+logic [1:0][7:0]  g_spt_in, g_trk_in;
+logic [1:0][1:0]  g_sides_in;
+logic [1:0]       g_ready_in;
+// track parser
+logic [7:0]  wt_prev;
+logic [2:0]  wt_id;              // ID bytes still to come (4..1), 0 = scanning
+logic [1:0]  wt_idsize;
+logic [10:0] wt_skip;            // data field bytes still to skip
+logic        wt_wantdata;
+logic [7:0]  wt_count;
+
 wire        dsel   = drive != 2'd0;
 wire        dn     = (drive == 2'd2);
 wire [7:0]  hp     = headpos[dn];
-wire [7:0]  d_spt  = spt[dn];
-wire        dens_ok = dden_n ? (d_spt == 8'd9) : (d_spt >= 8'd16);
+wire [7:0]  d_spt  = fmt_on[dn] ? fmt_spt[dn] : spt[dn];
+wire [7:0]  d_trk  = fmt_on[dn] ? fmt_tracks[dn] : tracks[dn];
+wire [1:0]  d_sides = fmt_on[dn] ? fmt_sides[dn] : sides[dn];
+wire        dens_ok = fmt_on[dn] ? (fmt_dd[dn] == !dden_n) : dden_n ? (d_spt == 8'd9) : (d_spt >= 8'd16);
 wire        disk   = dsel && ready[dn];
 wire        index  = disk && motor_on && (index_ctr < 32'(CLK_HZ / 250));   // 4 ms of 200 ms
 
@@ -103,8 +125,8 @@ endfunction
 
 // Sector present on the medium under the head?
 function automatic logic sector_ok(input logic [7:0] sec);
-    return disk && dens_ok && (track_r == hp) && (hp < tracks[dn]) && (sec < d_spt)
-        && (!side || sides[dn] == 2'd2);
+    return disk && dens_ok && (track_r == hp) && (hp < d_trk) && (sec < d_spt)
+        && (!side || d_sides == 2'd2);
 endfunction
 
 `ifdef WD_DEBUG
@@ -136,7 +158,17 @@ always_ff @(posedge clk) begin
         stepped <= 1'b0;
         motor_timer <= 32'd0;
         timer <= 32'd0;
+        fmt_on <= 2'b00;
     end else begin
+        // a new image (geometry or presence changes) drops the formatted geometry
+        g_spt_in <= spt;
+        g_trk_in <= tracks;
+        g_sides_in <= sides;
+        g_ready_in <= ready;
+        for (int i = 0; i < 2; i++)
+            if (g_spt_in[i] != spt[i] || g_trk_in[i] != tracks[i] || g_sides_in[i] != sides[i] || g_ready_in[i] != ready[i])
+                fmt_on[i] <= 1'b0;
+
         index_ctr <= (index_ctr >= 32'(CLK_HZ / 5 - 1)) ? 32'd0 : index_ctr + 32'd1;
         if (motor_timer != 32'd0) motor_timer <= motor_timer - 32'd1;
         else if (st == S_IDLE) motor_on <= 1'b0;
@@ -233,7 +265,7 @@ always_ff @(posedge clk) begin
                 end
             end else begin
                 img_rd <= 1'b1;
-                img_lsn <= lsn_of(hp, side, sector_r, d_spt, tracks[dn]);
+                img_lsn <= lsn_of(hp, side, sector_r, d_spt, d_trk);
                 st <= S_RDIMG;
             end
         end
@@ -267,7 +299,7 @@ always_ff @(posedge clk) begin
                 if (bcnt == 9'd255) begin
                     status[1] <= 1'b0;
                     img_wr <= 1'b1;
-                    img_lsn <= lsn_of(hp, side, sector_r, d_spt, tracks[dn]);
+                    img_lsn <= lsn_of(hp, side, sector_r, d_spt, d_trk);
                     st <= S_WRIMG;
                 end else begin
                     bcnt <= bcnt + 9'd1;
@@ -289,7 +321,7 @@ always_ff @(posedge clk) begin
         // Type III
         S_RDADDR: begin
             if (timer != 32'(FIND_US * US)) timer <= timer + 32'd1;
-            else if (!(disk && dens_ok && hp < tracks[dn])) begin
+            else if (!(disk && dens_ok && hp < d_trk)) begin
                 status[4] <= 1'b1;
                 st <= S_DONE;
             end else if (bcnt == 9'd0 && !drq) begin
@@ -321,7 +353,9 @@ always_ff @(posedge clk) begin
             st <= S_DONE;
         end
         S_WRTRK: begin
-            // format: take the track bytes, keep the image as it is
+            // format: take the track bytes and count the sector IDs in them (an ID mark FE
+            // after the A1 sync, written as F5, or in FM after 00; 4 ID bytes; then the data
+            // field from its mark FB/F8 on is skipped). The image keeps its data.
             if (!disk || wprot[dn]) begin
                 if (disk) status[6] <= 1'b1;
                 st <= S_DONE;
@@ -330,9 +364,46 @@ always_ff @(posedge clk) begin
                 drq <= 1'b1;
                 status[1] <= 1'b1;
                 timer <= 32'd1;
+                wt_prev <= 8'h4e;
+                wt_id <= 3'd0;
+                wt_skip <= 11'd0;
+                wt_wantdata <= 1'b0;
+                wt_count <= 8'd0;
             end else if (!drq && !(wr || rd)) begin
+                // the byte the CPU wrote last (data_r) goes to the track now
+                if (trkcnt != 13'd0) begin
+                    logic mark;
+                    mark = dden_n ? (wt_prev == 8'h00) : (wt_prev == 8'hf5);
+                    wt_prev <= data_r;
+                    if (wt_skip != 11'd0)
+                        wt_skip <= wt_skip - 11'd1;
+                    else if (wt_id != 3'd0) begin
+                        if (wt_id == 3'd1) wt_idsize <= data_r[1:0];
+                        if (wt_id == 3'd2) wt_count <= wt_count + 8'd1;          // sector number byte
+                        wt_id <= wt_id - 3'd1;
+                    end else if (mark && data_r == 8'hfe) begin
+                        wt_id <= 3'd4;
+                        wt_wantdata <= 1'b1;
+                    end else if (mark && wt_wantdata && (data_r == 8'hfb || data_r == 8'hf8)) begin
+                        wt_skip <= 11'd128 << wt_idsize;
+                        wt_wantdata <= 1'b0;
+                    end
+                end
                 if (trkcnt == (dden_n ? 13'd3125 : 13'd6250)) begin
                     status[1] <= 1'b0;
+                    // this track's layout becomes the drive's geometry
+                    if (wt_count != 8'd0) begin
+                        if (!fmt_on[dn] || (hp == 8'd0 && !side)) begin
+                            fmt_tracks[dn] <= hp + 8'd1;
+                            fmt_sides[dn] <= side ? 2'd2 : 2'd1;
+                        end else begin
+                            if (hp + 8'd1 > fmt_tracks[dn]) fmt_tracks[dn] <= hp + 8'd1;
+                            if (side) fmt_sides[dn] <= 2'd2;
+                        end
+                        fmt_spt[dn] <= wt_count;
+                        fmt_dd[dn] <= !dden_n;
+                        fmt_on[dn] <= 1'b1;
+                    end
                     st <= S_DONE;
                 end else begin
                     trkcnt <= trkcnt + 13'd1;
