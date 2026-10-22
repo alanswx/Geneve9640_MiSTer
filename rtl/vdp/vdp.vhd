@@ -299,7 +299,13 @@ ENTITY VDP IS
         LEGACY_VGA          : IN    STD_LOGIC;
 
         VDP_ID              : IN    STD_LOGIC_VECTOR(  4 DOWNTO 0 );
-        OFFSET_Y            : IN    STD_LOGIC_VECTOR(  6 DOWNTO 0 )
+        OFFSET_Y            : IN    STD_LOGIC_VECTOR(  6 DOWNTO 0 );
+
+        -- Geneve9640_MiSTer: colour bus mouse
+        MOUSE_STB           : IN    STD_LOGIC;
+        MOUSE_DX            : IN    STD_LOGIC_VECTOR(  7 DOWNTO 0 );
+        MOUSE_DY            : IN    STD_LOGIC_VECTOR(  7 DOWNTO 0 );
+        MOUSE_BTN           : IN    STD_LOGIC_VECTOR(  1 DOWNTO 0 )
 
         -- DEBUG OUTPUT
     --  DEBUG_OUTPUT        : OUT   STD_LOGIC_VECTOR( 15 DOWNTO 0 ) -- ★
@@ -793,7 +799,11 @@ ARCHITECTURE RTL OF VDP IS
 
             -- SWITCHED I/O SIGNALS
             FORCED_V_MODE               : IN    STD_LOGIC;
-            VDP_ID                      : IN    STD_LOGIC_VECTOR(  4 DOWNTO 0 )
+            VDP_ID                      : IN    STD_LOGIC_VECTOR(  4 DOWNTO 0 );
+            MOUSE_STB                   : IN    STD_LOGIC;
+            MOUSE_DX                    : IN    STD_LOGIC_VECTOR(  7 DOWNTO 0 );
+            MOUSE_DY                    : IN    STD_LOGIC_VECTOR(  7 DOWNTO 0 );
+            MOUSE_BTN                   : IN    STD_LOGIC_VECTOR(  1 DOWNTO 0 )
         );
     END COMPONENT;
 
@@ -1787,7 +1797,11 @@ BEGIN
         VDPMODEISVRAMINTERLEAVE     => VDPMODEISVRAMINTERLEAVE      ,
 
         FORCED_V_MODE               => FORCED_V_MODE                ,
-        VDP_ID                      => VDP_ID
+        VDP_ID                      => VDP_ID                       ,
+        MOUSE_STB                   => MOUSE_STB                    ,
+        MOUSE_DX                    => MOUSE_DX                     ,
+        MOUSE_DY                    => MOUSE_DY                     ,
+        MOUSE_BTN                   => MOUSE_BTN
     );
 
     -- ★

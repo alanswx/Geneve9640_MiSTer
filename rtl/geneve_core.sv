@@ -57,6 +57,13 @@ module geneve_core #(
     input  logic [4:0]  joy1,
     input  logic [4:0]  joy2,
 
+    // Bus mouse (V9938 colour bus): signed deltas (-127..127, x right, y down) with a strobe;
+    // buttons {left, middle, right}, 1 = pressed
+    input  logic        mouse_stb,
+    input  logic [7:0]  mouse_dx,
+    input  logic [7:0]  mouse_dy,
+    input  logic [2:0]  mouse_btn,
+
     // RTC
     input  logic        rtc_load,
     input  logic [55:0] rtc_bcd,
@@ -173,7 +180,7 @@ always_comb begin
     pin_in[6]  = !joy[3];                  // down
     pin_in[7]  = !joy[4];                  // up
     pin_in[8]  = !keyint;
-    pin_in[10] = 1'b1;                     // left mouse button
+    pin_in[10] = !mouse_btn[2];            // left mouse button (MAME left_mouse_button)
     pin_in[11] = 1'b1;                     // RTC interrupt (not wired in MAME)
     pin_in[12] = !intb;
 end
@@ -402,7 +409,9 @@ VDP vdp_i (
     .PVIDEOHS_N(vga_hs_n), .PVIDEOVS_N(vga_vs_n), .PVIDEOCS_N(),
     .PVIDEODHCLK(vga_dhclk), .PVIDEODLCLK(vga_dlclk), .BLANK_O(), .PVIDEODE(vga_de), .PDEBUG(dbg_vdp),
     .DISPRESO(1'b0), .NTSC_PAL_TYPE(1'b1), .FORCED_V_MODE(1'b0), .LEGACY_VGA(1'b0),
-    .VDP_ID(5'b00000), .OFFSET_Y(7'd0)
+    .VDP_ID(5'b00000), .OFFSET_Y(7'd0),
+    .MOUSE_STB(mouse_stb), .MOUSE_DX(mouse_dx), .MOUSE_DY(mouse_dy),
+    .MOUSE_BTN({mouse_btn[1], mouse_btn[0]})      // S#1 bit 7 middle (switch 2), bit 6 right (switch 1)
 );
 
 always_ff @(posedge clk) begin

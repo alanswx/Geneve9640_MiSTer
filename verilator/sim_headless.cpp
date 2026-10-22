@@ -47,6 +47,8 @@ struct Options {
     std::string vdp_log;                   // --vdp-log FILE: CPU writes to VDP ports 1-3
     struct Key { uint32_t frame; std::vector<uint8_t> codes; };
     std::vector<Key> keys;                 // --xt FRAME:HEX,HEX,...
+    struct Mouse { uint32_t frame; int dx, dy, btn; };
+    std::vector<Mouse> mouse;              // --mouse FRAME:DX,DY,BUTTONS
 };
 
 static void usage()
@@ -67,6 +69,8 @@ static void usage()
 "  --trace-from C / --trace-to C   CPU cycle window for the trace\n"
 "  --xt FRAME:HEX[,HEX..] XT scancodes into the keyboard at FRAME\n"
 "  --type FRAME:TEXT      type TEXT (US layout, \\n = Enter) from FRAME\n"
+"  --mouse FRAME:DX,DY,B  bus mouse: move by DX,DY (right/down, -127..127) at FRAME; B = buttons\n"
+"                         (4 left, 2 middle, 1 right), held until the next --mouse\n"
 "  --quiet\n");
 }
 
@@ -425,6 +429,7 @@ int Sim::run()
     top->fdc_tracks0 = disk[0].tracks; top->fdc_tracks1 = disk[1].tracks;
     top->fdc_sides0 = disk[0].sides; top->fdc_sides1 = disk[1].sides;
     top->joy1 = 0; top->joy2 = 0;
+    top->mouse_stb = 0; top->mouse_btn = 0;
     // 2026-10-21 15:00:00, Wednesday
     top->rtc_bcd = 0x03261021150000ULL;
     top->rtc_bcd = (0x03ULL << 48) | (0x26ULL << 40) | (0x10ULL << 32) | (0x21ULL << 24) | (0x15ULL << 16);
@@ -465,6 +470,7 @@ int Sim::run()
     struct { uint64_t c; uint16_t wp, st, pc, ir; } prev{};
     bool have_prev = false;
     size_t key_i = 0;
+    size_t mouse_i = 0;
     std::vector<uint8_t> keyq;
     uint64_t next_key = 0;
     uint32_t last_report = 0;
@@ -499,6 +505,17 @@ int Sim::run()
         if (top->dbg_wr && vdplog && ((top->dbg_waddr & 0xfff0) == 0xf100 || (top->dbg_waddr & 0xfc00) == 0x8c00)
             && (top->dbg_waddr & 0x6) != 0)
             fprintf(vdplog, "%u %llu %04X %02X\n", frame, (unsigned long long)top->dbg_cycles, top->dbg_waddr, top->dbg_wdata);
+
+        // mouse
+        top->mouse_stb = 0;
+        while (mouse_i < opt.mouse.size() && opt.mouse[mouse_i].frame <= frame) {
+            const auto &m = opt.mouse[mouse_i++];
+            top->mouse_stb = 1;
+            top->mouse_dx = (uint8_t)m.dx;
+            top->mouse_dy = (uint8_t)m.dy;
+            top->mouse_btn = ((m.btn & 4) ? 4 : 0) | ((m.btn & 2) ? 2 : 0) | ((m.btn & 1) ? 1 : 0);
+            break;
+        }
 
         // keyboard
         top->kbd_strobe = 0;
@@ -591,6 +608,12 @@ int main(int argc, char **argv)
             k.frame = std::stoul(t.substr(0, c));
             k.codes = xt_type(t.substr(c + 1));
             o.keys.push_back(k);
+        }
+        else if (a == "--mouse") {
+            std::string v = next();
+            Options::Mouse m{};
+            if (sscanf(v.c_str(), "%u:%d,%d,%d", &m.frame, &m.dx, &m.dy, &m.btn) < 3) { fprintf(stderr, "--mouse wants FRAME:DX,DY[,B]\n"); return 2; }
+            o.mouse.push_back(m);
         }
         else if (a == "--xt") {
             std::string s = next();

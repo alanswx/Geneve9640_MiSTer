@@ -198,7 +198,13 @@ ENTITY VDP_REGISTER IS
 
         -- SWITCHED I/O SIGNALS
         FORCED_V_MODE               : IN    STD_LOGIC;
-        VDP_ID                      : IN    STD_LOGIC_VECTOR(  4 DOWNTO 0 )
+        VDP_ID                      : IN    STD_LOGIC_VECTOR(  4 DOWNTO 0 );
+
+        -- Geneve9640_MiSTer: colour bus mouse (R#8 MS/LP = 10): deltas into S#3/S#5, buttons into S#1
+        MOUSE_STB                   : IN    STD_LOGIC;
+        MOUSE_DX                    : IN    STD_LOGIC_VECTOR(  7 DOWNTO 0 );
+        MOUSE_DY                    : IN    STD_LOGIC_VECTOR(  7 DOWNTO 0 );
+        MOUSE_BTN                   : IN    STD_LOGIC_VECTOR(  1 DOWNTO 0 )
     );
 END VDP_REGISTER;
 
@@ -222,6 +228,10 @@ ARCHITECTURE RTL OF VDP_REGISTER IS
     SIGNAL VDPREGPTR                : STD_LOGIC_VECTOR(  5 DOWNTO 0 );
     SIGNAL VDPREGWRPULSE            : STD_LOGIC;
     SIGNAL VDPR15STATUSREGNUM       : STD_LOGIC_VECTOR(  3 DOWNTO 0 );
+    SIGNAL REG_R8_MSLP              : STD_LOGIC_VECTOR(  1 DOWNTO 0 );
+    SIGNAL FF_MOUSE_X               : STD_LOGIC_VECTOR(  7 DOWNTO 0 );
+    SIGNAL FF_MOUSE_Y               : STD_LOGIC_VECTOR(  7 DOWNTO 0 );
+    SIGNAL W_MOUSE_MODE             : STD_LOGIC;
 
     SIGNAL VSYNCINTACK              : STD_LOGIC;
     SIGNAL HSYNCINTACK              : STD_LOGIC;
@@ -442,16 +452,28 @@ BEGIN
                     CASE( VDPR15STATUSREGNUM )IS
                     WHEN "0000" => -- READ S#0
                         DBI <= (NOT REQ_VSYNC_INT_N) & VDPS0SPOVERMAPPED & VDPS0SPCOLLISIONINCIDENCE & VDPS0SPOVERMAPPEDNUM;
-                    WHEN "0001" => -- READ S#1
-                        DBI <= "00" & VDP_ID & (NOT REQ_HSYNC_INT_N);
+                    WHEN "0001" => -- READ S#1 (mouse mode: buttons in bits 7-6, MAME v9938)
+                        IF( W_MOUSE_MODE = '1' )THEN
+                            DBI <= MOUSE_BTN & VDP_ID & (NOT REQ_HSYNC_INT_N);
+                        ELSE
+                            DBI <= "00" & VDP_ID & (NOT REQ_HSYNC_INT_N);
+                        END IF;
                     WHEN "0010" => -- READ S#2
                         DBI <= VDPCMDTR & VD & HD & VDPCMDBD & "11" & FIELD & VDPCMDCE;
-                    WHEN "0011" => -- READ S#3
-                        DBI <= VDPS3S4SPCOLLISIONX(7 DOWNTO 0);
+                    WHEN "0011" => -- READ S#3 (mouse mode: X delta)
+                        IF( W_MOUSE_MODE = '1' )THEN
+                            DBI <= FF_MOUSE_X;
+                        ELSE
+                            DBI <= VDPS3S4SPCOLLISIONX(7 DOWNTO 0);
+                        END IF;
                     WHEN "0100" => -- READ S#4
                         DBI <= "0000000" & VDPS3S4SPCOLLISIONX(8);
-                    WHEN "0101" => -- READ S#5
-                        DBI <= VDPS5S6SPCOLLISIONY(7 DOWNTO 0);
+                    WHEN "0101" => -- READ S#5 (mouse mode: Y delta)
+                        IF( W_MOUSE_MODE = '1' )THEN
+                            DBI <= FF_MOUSE_Y;
+                        ELSE
+                            DBI <= VDPS5S6SPCOLLISIONY(7 DOWNTO 0);
+                        END IF;
                     WHEN "0110" => -- READ S#6
                         DBI <= "0000000" & VDPS5S6SPCOLLISIONY(8);
                     WHEN "0111" => -- READ S#7: THE COLOR REGISTER
@@ -466,6 +488,45 @@ BEGIN
                 WHEN OTHERS => -- PORT#2, #3: NOT SUPPORTED IN READ MODE
                     DBI <= (OTHERS => '1');
                 END CASE;
+            END IF;
+        END IF;
+    END PROCESS;
+
+    --------------------------------------------------------------------------
+    -- Geneve9640_MiSTer: MOUSE DELTAS (MAME v99x8 colorbus_x/y_input): summed
+    -- while in mouse mode, limited to -127..127, cleared by reading S#3 / S#5
+    --------------------------------------------------------------------------
+    W_MOUSE_MODE <= '1' WHEN( REG_R8_MSLP = "10" )ELSE '0';
+
+    PROCESS( RESET, CLK21M )
+        VARIABLE SX : STD_LOGIC_VECTOR( 9 DOWNTO 0 );
+        VARIABLE SY : STD_LOGIC_VECTOR( 9 DOWNTO 0 );
+    BEGIN
+        IF( RESET = '1' )THEN
+            FF_MOUSE_X <= (OTHERS => '0');
+            FF_MOUSE_Y <= (OTHERS => '0');
+        ELSIF( CLK21M'EVENT AND CLK21M = '1' )THEN
+            SX := (FF_MOUSE_X(7) & FF_MOUSE_X(7) & FF_MOUSE_X) + (MOUSE_DX(7) & MOUSE_DX(7) & MOUSE_DX);
+            SY := (FF_MOUSE_Y(7) & FF_MOUSE_Y(7) & FF_MOUSE_Y) + (MOUSE_DY(7) & MOUSE_DY(7) & MOUSE_DY);
+            IF( SX(9) = '0' AND SX(8 DOWNTO 7) /= "00" )THEN
+                SX := "0001111111";
+            ELSIF( SX(9) = '1' AND (SX(8 DOWNTO 7) /= "11" OR SX(6 DOWNTO 0) = "0000000") )THEN
+                SX := "1110000001";
+            END IF;
+            IF( SY(9) = '0' AND SY(8 DOWNTO 7) /= "00" )THEN
+                SY := "0001111111";
+            ELSIF( SY(9) = '1' AND (SY(8 DOWNTO 7) /= "11" OR SY(6 DOWNTO 0) = "0000000") )THEN
+                SY := "1110000001";
+            END IF;
+            IF( REQ = '1' AND WRT = '0' AND ADR(1 DOWNTO 0) = "01" AND VDPR15STATUSREGNUM = "0011" AND W_MOUSE_MODE = '1' )THEN
+                FF_MOUSE_X <= (OTHERS => '0');
+            ELSIF( MOUSE_STB = '1' AND W_MOUSE_MODE = '1' )THEN
+                FF_MOUSE_X <= SX(7 DOWNTO 0);
+            END IF;
+            IF( REQ = '1' AND WRT = '0' AND ADR(1 DOWNTO 0) = "01" AND VDPR15STATUSREGNUM = "0101" AND W_MOUSE_MODE = '1' )THEN
+                FF_MOUSE_Y <= (OTHERS => '0');
+            ELSIF( MOUSE_STB = '1' AND W_MOUSE_MODE = '1' )THEN
+                FF_MOUSE_Y <= SY(7 DOWNTO 0);
             END IF;
         END IF;
     END PROCESS;
@@ -554,6 +615,7 @@ BEGIN
             REG_R7_FRAME_COL        <= (OTHERS => '0');
             REG_R8_SP_OFF           <= '0';
             REG_R8_COL0_ON          <= '0';
+            REG_R8_MSLP             <= "00";
             REG_R9_PAL_MODE         <= FORCED_V_MODE;
             FF_R9_2PAGE_MODE        <= '0';
             REG_R9_INTERLACE_MODE   <= '0';
@@ -703,6 +765,7 @@ BEGIN
                         WHEN "01000" =>     -- #08
                             REG_R8_SP_OFF       <= VDPP1DATA(1);
                             REG_R8_COL0_ON      <= VDPP1DATA(5);
+                            REG_R8_MSLP         <= VDPP1DATA(7 DOWNTO 6);
                         WHEN "01001" =>     -- #09
                             REG_R9_PAL_MODE         <= VDPP1DATA(1);
                             FF_R9_2PAGE_MODE        <= VDPP1DATA(2);

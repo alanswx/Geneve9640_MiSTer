@@ -96,6 +96,7 @@ wire         forced_scandoubler;
 wire   [1:0] buttons;
 wire [127:0] status;
 wire  [10:0] ps2_key;
+wire  [24:0] ps2_mouse;
 wire  [31:0] joystick_0, joystick_1;
 wire  [64:0] rtc;
 
@@ -129,6 +130,7 @@ hps_io #(.CONF_STR(CONF_STR), .VDNUM(3)) hps_io
 	.status_menumask(16'd0),
 
 	.ps2_key(ps2_key),
+	.ps2_mouse(ps2_mouse),
 	.joystick_0(joystick_0),
 	.joystick_1(joystick_1),
 	.RTC(rtc),
@@ -250,6 +252,26 @@ sdram sdram
 	.ready(sdram_ready)
 );
 
+/////////////////  MOUSE  /////////////////////////
+
+// PS/2 packet: [7:0] flags (0 left, 1 right, 2 middle, 4 X sign, 5 Y sign), [15:8] X, [23:16] Y (up),
+// [24] toggles per packet. The bus mouse wants x right / y down, limited to -127..127.
+reg        mouse_stb;
+reg  [7:0] mouse_dx, mouse_dy;
+always @(posedge clk_sys) begin
+	reg        old_t;
+	reg  [8:0] x, y;
+	old_t <= ps2_mouse[24];
+	mouse_stb <= 0;
+	if (old_t != ps2_mouse[24]) begin
+		x = {ps2_mouse[4], ps2_mouse[15:8]};
+		y = -{ps2_mouse[5], ps2_mouse[23:16]};
+		mouse_dx <= ($signed(x) > 127) ? 8'd127 : ($signed(x) < -127) ? 8'h81 : x[7:0];
+		mouse_dy <= ($signed(y) > 127) ? 8'd127 : ($signed(y) < -127) ? 8'h81 : y[7:0];
+		mouse_stb <= 1;
+	end
+end
+
 /////////////////  KEYBOARD, RTC  /////////////////
 
 wire       kbd_strobe;
@@ -360,6 +382,8 @@ geneve_core core
 	.kbd_strobe(kbd_strobe), .kbd_code(kbd_code),
 	.joy1({joystick_0[3], joystick_0[2], joystick_0[0], joystick_0[1], joystick_0[4]}),
 	.joy2({joystick_1[3], joystick_1[2], joystick_1[0], joystick_1[1], joystick_1[4]}),
+	.mouse_stb(mouse_stb), .mouse_dx(mouse_dx), .mouse_dy(mouse_dy),
+	.mouse_btn({ps2_mouse[0], ps2_mouse[2], ps2_mouse[1]}),
 
 	.rtc_load(rtc_load), .rtc_bcd(rtc[55:0]),
 

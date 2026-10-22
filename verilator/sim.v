@@ -40,6 +40,10 @@ module top(
    input   [7:0] kbd_code,
    input   [4:0] joy1,
    input   [4:0] joy2,
+   input         mouse_stb,
+   input   [7:0] mouse_dx,
+   input   [7:0] mouse_dy,
+   input   [2:0] mouse_btn,
    input         rtc_load,
    input  [55:0] rtc_bcd,
 
@@ -130,6 +134,20 @@ always @(posedge clk) begin
       dram_cnt <= dram_cnt - 1'b1;
 end
 
+`ifdef MOUSE_DEBUG
+reg [23:0] mwin = 0;
+always @(posedge clk) begin
+   if (mouse_stb) begin
+      mwin <= 24'd2000000;
+      $display("MOUSE stb dx=%0d dy=%0d btn=%b c=%0d", $signed(mouse_dx), $signed(mouse_dy), mouse_btn, core.dbg_cycles);
+   end else if (mwin != 0) mwin <= mwin - 1'b1;
+   if (mwin != 0 && core.vdp_ack && core.vdp_port == 2'd1 && !core.vdp_wrt)
+      $display("  S read %02x", core.vdp_dbi);
+   if (mwin != 0 && core.cru_rd && core.cru_addr == 16'h0038)
+      $display("  CRU 9901 bit 28 read: pin=%b dir12=%b", core.pin_in[10], core.p_dir[12]);
+end
+`endif
+
 `ifdef USE_SD
 wire        c_fdc_rd, c_fdc_wr, c_fdc_drive, c_fdc_ack, c_buf_wr;
 wire [15:0] c_fdc_lsn;
@@ -179,6 +197,7 @@ geneve_core core (
    .sound(sound),
    .kbd_strobe(kbd_strobe), .kbd_code(kbd_code),
    .joy1(joy1), .joy2(joy2),
+   .mouse_stb(mouse_stb), .mouse_dx(mouse_dx), .mouse_dy(mouse_dy), .mouse_btn(mouse_btn),
    .rtc_load(rtc_load), .rtc_bcd(rtc_bcd),
    `FDC_PORTS
    .ide_mounted(ide_mounted), .ide_readonly(1'b0), .ide_size(ide_size), .ide_lba(ide_lba), .ide_rd(ide_rd), .ide_wr(ide_wr),
