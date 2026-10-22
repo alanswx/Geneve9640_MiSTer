@@ -20,6 +20,10 @@
   before every picture byte. Regression: tools/regress.sh VTOP OUT (screenshot md5s, compare two builds).
 - Native games found in hloberg's GAMES.CHD (MAME HFDC image; TIImageTool CommandShell export works on it):
   EXECGAMES.{TETRIS,PINB,SHARK,SCRABBLE,SP}; Flying Shark needs memory above 512K (Memex/384K).
+  Tetris plays on mister126 ("Geneve Tetris" MGL: TetrisBoot.dsk with AUTOEXEC B:TETRIS + Games1.dsk).
+  PINLOAD (Pinball) from the IDE disk: "I/O Error, PINLOAD aborted" loading PINROM256, same in MAME (IDE).
+  SCRA/SPAD13A are E/A option 5 images (need an EXEC-style loader; MDOS says Bad command, as in MAME).
+  MYART 1.4 (MAIN.CHD) stops at "Loading Please Wait" in MAME and in the sim alike (missing files?).
 - MDOS's floppy driver uses 40 tracks unless configured (GENCFG): keep test files below track 40.
 - Bus mouse (V9938 colour bus, MiSTer PS/2 mouse): 9640 News V1#3 MOUSE80 follows the mouse, right button
   writes, left exits (sim and board). Sim: --mouse FRAME:DX,DY,BUTTONS.
