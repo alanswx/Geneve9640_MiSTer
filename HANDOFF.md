@@ -7,8 +7,10 @@
 - **CPU**: `rtl/tms9995/tms9995.sv`, a port of MAME's tms9995.cpp microprograms; boot ROM traces match MAME's
   PC/WP/ST for 426k instructions with the same cycle counts (differences only around sound-chip READY timing).
   V9938 command timing differs from MAME (ESE VDP), so long traces diverge at CE polling loops.
-- **MiSTer**: `Geneve.sv` builds with Quartus 17 (57 % ALMs, 38 % BRAM). First board test on mister126: black
-  screen; a debug UART build (PC, DRAM counters, ROM bytes on /dev/ttyS1) is the next step.
+- **MiSTer**: `Geneve.sv` builds with Quartus 17 (57 % ALMs, 38 % BRAM, timing met). On mister126 it boots
+  MDOS 6.50 from `MDOS650.dsk` to `A:\>` with the MiSTer RTC time; PS/2 keyboard works (`DIR`).
+  Debug UART: 16 hex digits every 0.1 s on /dev/ttyS1 (PC | VDP command debug | VDP writes | ROM | flags).
+- CPU speed: about 92 % of 3 MHz in the sim (handshake clocks per byte); to be improved.
 
 ## Layout
 
@@ -38,9 +40,14 @@ disks `MDOS650.dsk`, `MDOS670b_720k.dsk`; MGL `/media/fat/_Geneve/Geneve MDOS650
 - The V9938 loads a default palette on reset; the ESE VDP did not (MSX BIOS wrote it).
 - 9901 P1 = 1 is a one-shot VDP reset. The XT keyboard must send AA after power-on / clock-low reset.
 - Quartus 17 rejects out-of-range constant indexes in unrolled loops even when guarded.
+- NB port copies must be inside the same always_ff as the blocking code (a separate block reads stale flops
+  on the FPGA while Verilator shows fresh values).
+- MGL file paths are relative to games/Geneve/. The box reset (9901 P0) must clear the DDCC-1 latch, or a
+  retry after a failed boot finds the DSR in the wrong EPROM bank.
+- `make sd` runs the floppy through rtl/geneve_disk.sv and an hps_io SD model (`--mount-at F` mounts late).
 
 ## Next
 
-1. Board bring-up with the debug UART; fix whatever differs from the sim.
+1. CPU throughput to a full 3 MHz; sound check; joystick check.
 2. HFDC (hard disk) or TIPI for MDOS 7.x hard-disk setups; boot ROM 2.00.
 3. Mouse (V9938 colour bus), joystick check, sound check, OSD options (boot ROM version, VRAM 192K).
