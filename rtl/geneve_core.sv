@@ -308,10 +308,12 @@ always_ff @(posedge clk) begin
     sram_q <= sram[sram_a];
 end
 
+// one write port (block RAM): 1.00 from 0000-3FFF, 2.00 from 6000-9FFF
 wire [15:0] rom_addr2 = rom_addr - 16'h6000;
+wire        eprom_we = rom_wr && (rom_addr < 16'h4000 || (rom_addr >= 16'h6000 && rom_addr < 16'ha000));
+wire [14:0] eprom_wa = (rom_addr < 16'h4000) ? {1'b0, rom_addr[13:0]} : {1'b1, rom_addr2[13:0]};
 always_ff @(posedge clk) begin
-    if (rom_wr && rom_addr < 16'h4000) eprom[{1'b0, rom_addr[13:0]}] <= rom_data;
-    if (rom_wr && rom_addr >= 16'h6000 && rom_addr < 16'ha000) eprom[{1'b1, rom_addr2[13:0]}] <= rom_data;
+    if (eprom_we) eprom[eprom_wa] <= rom_data;
     eprom_q <= eprom[{boot200, physpage[0], bus_addr[12:0]}];
 end
 
