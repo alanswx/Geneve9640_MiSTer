@@ -15,7 +15,11 @@
   MIXPIC G7 picture (board); HIMIX3, BATWIND, BOXER, SFXER same as MAME; GPL 7.40 TI mode: module menu,
   Scott Adams' Adventure cartridge, TI BASIC; CALL SOUND(2000,440,0) = 440 Hz for 2.0 s (sim and board).
 - MDOS's floppy driver uses 40 tracks unless configured (GENCFG): keep test files below track 40.
-- Hard disk (MAME verified, core not done yet): boot ROM 2.00 (genbt200.bin) boots MDOS 7.45 from an IDE
+- IDE hard disk: the core has the Nouspikel IDE card (CRU >1000, Geneve mode, rtl/geneve_core.sv + rtl/ata_disk.sv);
+  its 512K SRAM is in SDRAM (dram_addr bit 19) and preloaded from boot.rom. OSD: Boot ROM 1.00/2.00, IDE card
+  Off/On, S2 = IDE disk (.hdv/.raw/.img, plain 512-byte sector dump). Sim: `--rom2 roms/genbt200.bin --ide X.raw
+  --ide-sram idesram.bin` boots MDOS 7.45 from IDE; MDOS sees the disk as SCS6. (SCSMAP 6A), DIR/COPY work.
+- IDE background (MAME verified): boot ROM 2.00 (genbt200.bin) boots MDOS 7.45 from an IDE
   disk with no floppy. Needs: Nouspikel IDE card in Geneve mode at CRU >1000; Fred Kaal's IDE DSR v14
   (IDEDSR14.dsk; NOT Nouspikel's IDEAL, which has no IDE1 device) in the card's 512K SRAM; on the disk
   IDE1.LOAD-IDE (the one from BeeryMiller/LOAD-SYS released with genbt200.bin, loads at >A000; the
@@ -38,14 +42,17 @@
 | `tools/remote_sync.sh`, `tools/kvms.sh` | copy tracked files to misterubuntu; MiSTerKVMS CLI for mister126 |
 | `tools/tidsk.py` | V9T9 floppy images: list, extract, new image, add TIFILES / DIS/VAR 80 files |
 | `tools/compare_run.sh` | the same MDOS session (AUTOEXEC) in MAME and the sim, screenshots side by side |
+| `tools/mkbootrom.py` | boot.rom for the MiSTer (both boot ROMs, DDCC-1 DSR, IDE SRAM) |
 | `tools/mkideimage.sh`, `tools/mkidesram.py` | IDE disk image (MDOS boot) and IDE card SRAM image with Kaal's DSR |
 | `tools/timt/MakeIDE.java` | IDE image creation with TIImageTool's classes (compile TIImageTool from emulators/tiimagetool with the RXTX jar + a gnu.io.DriverManager stub) |
 
-`docs/`, `software/`, `emulators/`, `fpga_refs/` are local research material (gitignored).
+`docs/`, `software/`, `emulators/`, `fpga_refs/` are local research material (gitignored); where it came from: SOURCES.md (keep it updated).
 
 ## Board files
 
-`/media/fat/games/Geneve/boot.rom` = `genbt100.bin` (16 KiB) + `ddcc1.u3` (8 KiB) (both from the MAME sets);
+`/media/fat/games/Geneve/boot.rom` from tools/mkbootrom.py: genbt100.bin + ddcc1.u3 + genbt200.bin (MAME sets)
++ IDE SRAM at 10000 (tools/mkidesram.py on IDEDSR14.dsk), 576 KiB; the old 24 KiB file still works without IDE/2.00.
+`MDOS745_IDE.hdv` (tools/mkideimage.sh) + `_Geneve/Geneve MDOS745 IDE.mgl` (needs OSD Boot ROM 2.00, IDE card On);
 disks `MDOS650.dsk`, `MDOS670b_720k.dsk`; MGL `/media/fat/_Geneve/Geneve MDOS650.mgl`.
 
 ## Gotchas found
@@ -64,5 +71,5 @@ disks `MDOS650.dsk`, `MDOS670b_720k.dsk`; MGL `/media/fat/_Geneve/Geneve MDOS650
 ## Next
 
 1. CPU throughput to a full 3 MHz; sound check; joystick check.
-2. HFDC (hard disk) or TIPI for MDOS 7.x hard-disk setups; boot ROM 2.00.
+2. IDE on the board (mister126); MDOS 7.46; bq4847 clock registers are static (time of the last RTC load).
 3. Mouse (V9938 colour bus), joystick check, sound check, OSD options (boot ROM version, VRAM 192K).
