@@ -47,32 +47,36 @@ assign BUTTONS = 0;
 
 //////////////////////////////////////////////////////////////////
 
-wire [1:0] ar = status[122:121];
-
-assign VIDEO_ARX = (!ar) ? 12'd4 : (ar - 1'd1);
-assign VIDEO_ARY = (!ar) ? 12'd3 : 12'd0;
-
+// OSD as in the MiSTer computer-core OSD standard: media on the top page act at once, every
+// other setting waits for Apply and reset (or any reset); "Changes pending" shows meanwhile.
 `include "build_id.v"
 localparam CONF_STR = {
 	"Geneve;;",
 	"-;",
-	"-,Needs games/Geneve/boot.rom (boot EPROMs, DSRs);",
+	"SC0,DSK,Pri. DSK1;",
+	"SC1,DSK,DSK2;",
+	"SC2,HDVRAWIMG,IDE disk;",
+	"F0,ROM,Load ROM;",
 	"-;",
-	"S0,DSK,DSK1;",
-	"S1,DSK,DSK2;",
-	"S2,HDVRAWIMG,IDE disk;",
+	"O[7],Memory,512K,Genmod 2M;",
 	"-;",
-	"O[3],Boot ROM,1.00,2.00;",
-	"O[4],IDE card (CRU 1000),Off,On;",
-	"O[5],Video RAM,128K,192K;",
-	"O[6],Speech synthesizer,On,Off;",
-	"O[7],Genmod (Memex 2M),Off,On;",
+	"P1,Machine;",
+	"P2,Video;",
+	"P5,Advanced;",
 	"-;",
-	"O[122:121],Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
-	"-;",
-	"T[0],Reset;",
-	"R[0],Reset and close OSD;",
+	"h0-,Changes pending;",
+	"R[0],Apply and reset;",
+
+	"P1O[5],Video RAM,128K,192K;",
+	"P1O[9:8],IDE card,Auto,Off,On;",
+	"P1O[6],Speech synth.,On,Off;",
+
+	"P2O[122:121],Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
+
+	"P5O[11:10],Boot ROM,Auto,1.00,2.00;",
+
 	"J1,Fire;",
+	"v,1;",
 	"V,v",`BUILD_DATE
 };
 
@@ -98,6 +102,8 @@ pll pll
 wire         forced_scandoubler;
 wire   [1:0] buttons;
 wire [127:0] status;
+reg  [127:0] cfg;          // the settings the machine runs with (below)
+wire         pending;
 wire  [10:0] ps2_key;
 wire  [24:0] ps2_mouse;
 wire  [31:0] joystick_0, joystick_1;
@@ -130,7 +136,7 @@ hps_io #(.CONF_STR(CONF_STR), .VDNUM(3)) hps_io
 	.forced_scandoubler(forced_scandoubler),
 	.buttons(buttons),
 	.status(status),
-	.status_menumask(16'd0),
+	.status_menumask({15'd0, pending}),
 
 	.ps2_key(ps2_key),
 	.ps2_mouse(ps2_mouse),
@@ -161,15 +167,67 @@ hps_io #(.CONF_STR(CONF_STR), .VDNUM(3)) hps_io
 
 /////////////////  RESET  /////////////////////////
 
-wire reset = RESET | status[0] | buttons[1] | ioctl_download | ~pll_locked;
+reg  ide_auto_reset = 0;
+wire reset = RESET | status[0] | buttons[1] | ioctl_download | ~pll_locked | ide_auto_reset;
+
+// The settings the machine runs with, taken from the OSD at every reset
+always @(posedge clk_sys) if (reset) cfg <= status;
+
+assign pending = {status[11:5], status[122:121]} != {cfg[11:5], cfg[122:121]};
+
+// Auto (IDE card, Boot ROM): an IDE disk turns the card on, and the machine boots it with boot ROM 2.00
+// unless a floppy was mounted in DSK1 after it: of the two boot disks the one mounted last wins. A core
+// start mounts the remembered slots first and an MGL's disks after them, so an MGL's boot disk wins.
+// A mount that changes the Auto choice resets the machine while the boot window after a reset is open
+// (5 s), and an IDE disk mounted or removed later resets it too; floppies changed later only count at
+// the next reset.
+reg ide_present = 0, ide_last = 0;
+reg ide_present_r = 0, ide_last_r = 0;
+always @(posedge clk_sys) begin
+	if (img_mounted[2]) begin
+		ide_present <= |img_size;
+		ide_last <= |img_size;
+	end
+	if (img_mounted[0] && |img_size) ide_last <= 0;
+	if (reset) begin
+		ide_present_r <= ide_present;
+		ide_last_r <= ide_last;
+	end
+end
+
+wire auto_ide  = cfg[9:8] == 2'd0;
+wire auto_boot = cfg[11:10] == 2'd0;
+wire ide_on    = auto_ide  ? ide_present_r : (cfg[9:8] == 2'd2);
+wire boot_200  = auto_boot ? (ide_present_r && ide_last_r) : (cfg[11:10] == 2'd2);
+
+wire auto_changed = (auto_ide && ide_present != ide_present_r) ||
+                    (auto_boot && (ide_present && ide_last) != (ide_present_r && ide_last_r));
+
+always @(posedge clk_sys) begin
+	reg  [3:0] cnt;
+	reg [27:0] window;
+	if (reset) window <= 28'd107386360;          // 5 s of clk_sys
+	else if (window) window <= window - 1'd1;
+	if (ide_auto_reset) begin
+		cnt <= cnt + 1'd1;
+		if (&cnt) ide_auto_reset <= 0;
+	end else if (!reset && auto_changed && (window || (auto_ide && ide_present != ide_present_r))) begin
+		ide_auto_reset <= 1;
+		cnt <= 0;
+	end
+end
+
+wire [1:0] ar = cfg[122:121];
+
+assign VIDEO_ARX = (!ar) ? 12'd4 : (ar - 1'd1);
+assign VIDEO_ARY = (!ar) ? 12'd3 : 12'd0;
 
 /////////////////  DRAM in SDRAM  /////////////////
 
 // The core asks for one byte at a time on clk_sys (dram_req, one clk) and
 // waits for dram_ack. The controller runs on clk_mem = 4 x clk_sys (same PLL).
-// 00000-7FFFF: DRAM, 80000-FFFFF: IDE card SRAM, loaded from boot.rom 10000-8FFFF,
-// 200000-3FFFFF: Memex (Genmod)
-// during the download (the core is in reset then).
+// 00000-7FFFF: DRAM, 80000-FFFFF: IDE card SRAM (loaded from boot.rom 10000-8FFFF
+// during the download, the core is in reset then), 200000-3FFFFF: Memex (Genmod).
 wire        dram_req, dram_we;
 wire [21:0] dram_addr;
 wire  [7:0] dram_wdata;
@@ -373,11 +431,11 @@ geneve_core core
 	.rom_wr(ioctl_download && ioctl_wr && ioctl_index == 16'd0 && (ioctl_addr < 27'ha000 || (ioctl_addr >= 27'h90000 && ioctl_addr < 27'ha0000))),
 	.rom_addr(ioctl_addr[19:0]),
 	.rom_data(ioctl_dout),
-	.boot200(status[3]),
-	.ide_en(status[4]),
-	.vram192(status[5]),
-	.speech_en(~status[6]),
-	.genmod(status[7]),
+	.boot200(boot_200),
+	.ide_en(ide_on),
+	.vram192(cfg[5]),
+	.speech_en(~cfg[6]),
+	.genmod(cfg[7]),
 
 	.dram_req(dram_req), .dram_we(dram_we), .dram_addr(dram_addr), .dram_wdata(dram_wdata),
 	.dram_rdata(dram_rdata), .dram_ack(dram_ack),

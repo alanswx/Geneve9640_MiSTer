@@ -2,7 +2,9 @@
 # Build an IDE hard disk image that boots MDOS with boot ROM 2.00, plus the IDE card SRAM with
 # Fred Kaal's IDE DSR (what IDELOAD would leave in the card).
 #
-#   tools/mkideimage.sh OUT.(chd|raw) SIZE_MB SYSTEM-SYS LOAD-IDE IDEDSR14.dsk SRAM_OUT.bin
+#   tools/mkideimage.sh OUT.(chd|raw) SIZE_MB SYSTEM-SYS LOAD-IDE IDEDSR14.dsk SRAM_OUT.bin [EXTRA_DIR]
+#
+# EXTRA_DIR: more TIFILES files for the root directory (imported under the name in their header).
 #
 # TIMT = directory of compiled TIImageTool classes (see HANDOFF.md), TIMT_LIB = its jars.
 # LOAD-IDE must be the one released with genbt200.bin (BeeryMiller/LOAD-SYS, loads at >A000).
@@ -11,19 +13,17 @@
 # with the card's MODE DIP switch set to Geneve (cfg: port :peb:slot8:ide:MODE value 1).
 set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-OUT=$1; SIZE=$2; SYS=$3; LOADIDE=$4; DSRDSK=$5; SRAM=$6
+OUT=$1; SIZE=$2; SYS=$3; LOADIDE=$4; DSRDSK=$5; SRAM=$6; EXTRA=$7
 CP="$TIMT:$TIMT_LIB/*"
 T=$(mktemp -d)
 cp "$SYS" "$T/SYSTEM-SYS"
+cp "$LOADIDE" "$T/LOAD-IDE"
+if [ -n "$EXTRA" ]; then cp "$EXTRA"/* "$T/"; fi
 # pad TIFILES payloads to whole sectors (some copies on GitHub are truncated)
 python3 -I -c "
 import sys
 for f in sys.argv[1:]:
-    d = open(f, 'rb').read(); d += bytes((-(len(d) - 128)) % 256); open(f, 'wb').write(d)" "$T/SYSTEM-SYS"
-cp "$LOADIDE" "$T/LOAD-IDE"
-python3 -I -c "
-import sys
-d = open(sys.argv[1], 'rb').read(); d += bytes((-(len(d) - 128)) % 256); open(sys.argv[1], 'wb').write(d)" "$T/LOAD-IDE"
+    d = open(f, 'rb').read(); d += bytes((-(len(d) - 128)) % 256); open(f, 'wb').write(d)" "$T"/*
 case "$OUT" in /*) ABS=$OUT ;; *) ABS=$PWD/$OUT ;; esac
 java -cp "$CP" de.mizapf.timt.ui.MakeIDE "$ABS" "$SIZE" GENEVEHD
 (cd "$T" && java -cp "$CP" de.mizapf.timt.CommandShell import "$ABS#1")

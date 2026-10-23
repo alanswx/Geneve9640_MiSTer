@@ -20,3 +20,4 @@
 /verilator/*.log
 /verilator/out*/
 /verilator/out_compare/
+__pycache__/

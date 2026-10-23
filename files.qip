@@ -4,6 +4,7 @@ set_global_assignment -name SEARCH_PATH rtl
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/geneve_ga.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/tms9901.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/mm58274.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/bcd_clock.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/wd1770.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/geneve_disk.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/ata_disk.sv

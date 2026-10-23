@@ -6,6 +6,7 @@ usage: tidsk.py IMAGE [IMAGE...]
        tidsk.py IMAGE --add-text NAME "line1|line2"  (adds or replaces a DIS/VAR 80 file)
        tidsk.py IMAGE --new VOLNAME TRACKS             (blank DSDD image, 18 sectors/track, 40 or 80 tracks)
        tidsk.py IMAGE --add FILE[=NAME] ...            (TIFILES files; the name defaults to the file name)
+       tidsk.py --tifiles-text NAME "line1|line2" OUT  (a DIS/VAR 80 file as TIFILES, e.g. for a hard disk)
 
 The volume information block is sector 0, the file descriptor index sector 1.
 """
@@ -73,6 +74,34 @@ def bit(bm, n, v=None):
         bm[i] &= ~(1 << b)
 
 
+def dv80_sectors(lines):
+    """DIS/VAR 80 records packed into sectors; returns the sectors and the end-of-file offset."""
+    secs, cur = [], bytearray()
+    for r in (l.encode("latin-1")[:80] for l in lines):
+        if len(cur) + 1 + len(r) + 1 > 256:
+            secs.append(bytes(cur + b"\xff").ljust(256, b"\0"))
+            cur = bytearray()
+        cur += bytes([len(r)]) + r
+    eof = len(cur)
+    secs.append(bytes(cur + b"\xff").ljust(256, b"\0"))
+    return secs, eof
+
+
+def tifiles_text(name, lines):
+    """A DIS/VAR 80 file in TIFILES format (128-byte header with the name at 0x10)."""
+    secs, eof = dv80_sectors(lines)
+    hdr = bytearray(128)
+    hdr[0:8] = b"\x07TIFILES"
+    hdr[8:10] = struct.pack(">H", len(secs))
+    hdr[10] = 0x80                         # DIS/VAR
+    hdr[11] = 3                            # records per sector
+    hdr[12] = eof
+    hdr[13] = 80
+    hdr[14:16] = struct.pack("<H", len(secs))
+    hdr[16:26] = name.encode("latin-1").ljust(10)
+    return bytes(hdr) + b"".join(secs)
+
+
 def add_text(path, name, lines):
     img = bytearray(open(path, "rb").read())
     vib = img[0:256]
@@ -87,16 +116,8 @@ def add_text(path, name, lines):
             for sct in data_sectors(img, f) + [n]:
                 bit(bm, sct, 0)
             entries.remove((n, f))
-    # records into sectors
     recs = [l.encode("latin-1")[:80] for l in lines]
-    secs, cur = [], bytearray()
-    for r in recs:
-        if len(cur) + 1 + len(r) + 1 > 256:
-            secs.append(bytes(cur + b"\xff").ljust(256, b"\0"))
-            cur = bytearray()
-        cur += bytes([len(r)]) + r
-    eof = len(cur)
-    secs.append(bytes(cur + b"\xff").ljust(256, b"\0"))
+    secs, eof = dv80_sectors(lines)
     # allocate the FDR (from sector 2) and the data (contiguous, from sector 34 as TI does)
     def free(start, count):
         n = start
@@ -214,6 +235,9 @@ def add_file(path, name, tifile):
 
 def main():
     a = sys.argv[1:]
+    if a and a[0] == "--tifiles-text":
+        open(a[3], "wb").write(tifiles_text(a[1].upper(), a[2].split("|")))
+        return 0
     if "--new" in a:
         i = a.index("--new")
         new_image(a[0], a[i + 1], int(a[i + 2]))

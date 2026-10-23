@@ -1,123 +1,122 @@
 # Geneve 9640 MiSTer core — handoff
 
-## State (2026-10-21)
+## State (2026-10-22)
 
-- **Simulation**: `verilator/` boots the boot ROM 1.00 and MDOS 6.50 / 6.70 from V9T9 floppy images (Myarc DDCC-1)
-  to `A:\>`, keyboard works (`DIR` lists the disk). Screens match MAME.
-- **CPU**: `rtl/tms9995/tms9995.sv`, a port of MAME's tms9995.cpp microprograms; boot ROM traces match MAME's
-  PC/WP/ST for 426k instructions with the same cycle counts (differences only around sound-chip READY timing).
-  V9938 command timing differs from MAME (ESE VDP), so long traces diverge at CE polling loops.
-- **MiSTer**: `Geneve.sv` builds with Quartus 17 (57 % ALMs, 38 % BRAM, timing met). On mister126 it boots
-  MDOS 6.50 from `MDOS650.dsk` to `A:\>` with the MiSTer RTC time; PS/2 keyboard works (`DIR`).
-  Debug UART: 16 hex digits every 0.1 s on /dev/ttyS1 (PC | VDP command debug | VDP writes | ROM | flags).
-- CPU speed: full 3 MHz (DRAM read-ahead at the address phase, posted writes); no lost CLKOUT ticks in the sim.
-- Tested (sim, and board where noted): MDOS 6.50/6.70/7.45 from floppy; two disks from one MGL (board);
-  MIXPIC G7 picture (board); HIMIX3, BATWIND, BOXER, SFXER same as MAME; GPL 7.40 TI mode: module menu,
-  Scott Adams' Adventure cartridge, TI BASIC; CALL SOUND(2000,440,0) = 440 Hz for 2.0 s (sim and board).
-- Tetris (9640 News, GAMES.CHD EXECGAMES.TETRIS): title picture same as MAME after two ESE VDP fixes:
-  an R#14 write keeps the auto-incremented A13-A0 (it reloaded the whole last-set address), and a second
-  control byte with bits 7-6 = 11 is ignored (MAME/openMSX; it was a register write). Tetris sends 04 CE
-  before every picture byte. Regression: tools/regress.sh VTOP OUT (screenshot md5s, compare two builds).
-- Native games found in hloberg's GAMES.CHD (MAME HFDC image; TIImageTool CommandShell export works on it):
-  EXECGAMES.{TETRIS,PINB,SHARK,SCRABBLE,SP}. hloberg runs them from batch files in GAMES.CHD ARCADEB
-  (`CD F:\EXECGAMES.SHARK` then `SHARKLOAD SHARK`): the EXEC-style loaders (PINLOAD, SHARKLOAD) open their
-  ROM image (PINROM256, SHARK512) in the *current directory*, and say "I/O Error, ... aborted" otherwise
-  (that was the earlier "Pinball fails" result, in MAME too). Start them with AUTOEXEC `B:|PINLOAD PINBALL`.
-  Tetris plays on mister126 ("Geneve Tetris" MGL: TetrisBoot.dsk with AUTOEXEC B:TETRIS + Games1.dsk).
-  Pinball 99 (PINROM256, 256K) runs on the stock Geneve from an 80-track floppy (sim, MAME, mister126:
-  "Geneve Pinball" MGL = PinBoot.dsk + Pinball.dsk).
-  Flying Shark (SHARK512, 512K) needs a Memex: on a stock Geneve MDOS says "Insufficient memory" (MAME, even
-  with its 384K SRAM option); it runs on the Genmod (OSD Genmod On; sim, MAME genmod, and mister126:
-  "Geneve Flying Shark (Genmod)" MGL = SharkBoot.dsk + FlyingShark.dsk, set Genmod On, Reset).
-  SCRA/SPAD13A are E/A option 5 images (MDOS says Bad command; hloberg loads them in the E/A cartridge via GPL).
-  MYART 1.4 (MAIN.CHD) stops at "Loading Please Wait" in MAME and in the sim alike (run from its directory?).
-- TI cartridges (GPL 7.40, GAMES.CHD CODGPL, 48 images; AUTOEXEC `TIMODE2|GPL B:NAME`, then F7 = ExeMod in
-  GPL's menu, a key, 2): 33 reach their title or game (Alpiner, Burgertime, Stud Poker, Chisholm Trail,
-  Fathom, Frogger, Ms. Pac-Man, M*A*S*H, Milton Bradley games, Microsurgeon, Miner 2049er, Moon Mine,
-  Moonsweeper, Munchman, Othello, Parsec, A-Maze-Ing, Popeye, Return to Pirate's Isle, TI Invaders, Tunnels of
-  Doom, Tombstone City, Video Chess, Wingwar, Blasto, Car Wars, Hunt the Wumpus, Kaboom, The Attack, Yahtzee...).
-  14 stay in GPL's menu with module "MENU" (4A Flyer, Donkey Kong, Hopper, Jungle Hunt, Pac-Man, Pole Position,
-  Sneggit, Anteater, Henpecked, Munchman II, Princess and Frog, Rotor Raider, Schnozola, Topper), Demon Attack
-  shows garbage, JMANJR "Can't load": the same in MAME (checked Anteater, Donkey Kong, Topper, Demon Attack);
-  hloberg starts them with MYGPL /1. Adventure asks for its data base (as expected without one).
-- Genmod (OSD "Genmod (Memex 2M)"; sim --genmod with --rom roms/gnmbt100.bin [--rom2 roms/gnmbt200.bin]):
-  MAME's genmod with the TI mode switch on (as hloberg's setup) and TURBO on. Genmod boot EPROMs from MAME
-  genmod.zip at boot.rom 98000/9C000 (tools/mkbootrom.py parts 7, 8). The Memex (2 MiB, SDRAM 200000-3FFFFF)
-  answers physical pages 40-E7 (F_EXP/F_BOX/F_SRAMU) except the BA mirrors and 10xxx010 (MAME memex.cpp default
-  switches); DRAM, SRAM, EPROM stay on board, the box's speech and IDE card answer first. TURBO: those accesses
-  have no wait states (MAME also drops them for some on-board devices; not done here).
-- MDOS 7.45 reads 80-track DSDD images (2880 sectors) on DSK2 (Flying Shark, Pinball disks); MDOS 6.50 used
-  40 tracks unless configured (GENCFG).
-- Bus mouse (V9938 colour bus, MiSTer PS/2 mouse): 9640 News V1#3 MOUSE80 follows the mouse, right button
-  writes, left exits (sim and board). Sim: --mouse FRAME:DX,DY,BUTTONS.
-- OSD Video RAM 192K: V9938 expansion RAM via R#45 MXC/MXS/MXD (checked in the sim with a small test
-  program; no known software uses it).
-- Floppy FORMAT (MDOS 6.50 FORMAT B:) gives a valid V9T9 image (write track sets the geometry); sim and board.
-- Joystick 1: TI BASIC CALL JOYST gives 4,4 for up+right, 0,-4 for down (sim: --joy FRAME:BITS).
-- Speech (PEB speech adapter, TMS5200 model): a test program speaking "HELLO" (LOAD ADDRESS >351A, SPEAK)
-  gives 0.52 s of speech in the sim (--speech roms/speech.bin --speech-wav) and 0.45 s on the board.
-  Checked by ear on mister126 (user, 2026-10-22): sounds right. MAME's speech adapter stayed silent for the
-  same program (native mode).
-  The ROM must be bit-reversed (tools/mkbootrom.py does it).
-- IDE hard disk: the core has the Nouspikel IDE card (CRU >1000, Geneve mode, rtl/geneve_core.sv + rtl/ata_disk.sv);
-  its 512K SRAM is in SDRAM (dram_addr bit 19) and preloaded from boot.rom. OSD: Boot ROM 1.00/2.00, IDE card
-  Off/On, S2 = IDE disk (.hdv/.raw/.img, plain 512-byte sector dump). Sim: `--rom2 roms/genbt200.bin --ide X.raw
-  --ide-sram idesram.bin` boots MDOS 7.45 from IDE; MDOS sees the disk as SCS6. (SCSMAP 6A), DIR/COPY work.
-  Board (mister126, 2026-10-21): boot ROM 2.00 + IDE card -> LOAD-IDE v3.05 -> MDOS 7.45 from MDOS745_IDE.hdv,
-  COPY to SCS6. lands in the .hdv on the SD card. Set the OSD options, then Reset (the mount survives resets).
-- IDE background (MAME verified): boot ROM 2.00 (genbt200.bin) boots MDOS 7.45 from an IDE
-  disk with no floppy. Needs: Nouspikel IDE card in Geneve mode at CRU >1000; Fred Kaal's IDE DSR v14
-  (IDEDSR14.dsk; NOT Nouspikel's IDEAL, which has no IDE1 device) in the card's 512K SRAM; on the disk
-  IDE1.LOAD-IDE (the one from BeeryMiller/LOAD-SYS released with genbt200.bin, loads at >A000; the
-  MDOS745DIS copy loads at >2000 and crashes) and IDE1.SYSTEM-SYS. tools/mkideimage.sh builds both the
-  disk (.chd for MAME, .raw for the core) and the SRAM image. Kaal's DSR v18 + sources, DU2K, DM2K:
-  https://hexbus.com/ti99geek/ (mirror of ti99-geek.nl).
+Builds with Quartus 17 (63 % ALMs, 77 % RAM blocks, timing met). On mister126 it boots MDOS from floppy
+and from the IDE disk; tested software is below. The sim (`verilator/`) runs the same RTL and matches MAME
+screen for screen where compared (`tools/compare_run.sh`); `tools/regress.sh` compares two builds.
+
+### Machine
+- CPU: `rtl/tms9995/tms9995.sv`, MAME's tms9995.cpp microprograms; boot ROM traces match MAME's PC/WP/ST
+  for 426k instructions with the same cycle counts. Full 3 MHz: DRAM read-ahead at the address phase,
+  posted writes. V9938 command timing differs from MAME (ESE VDP), so long traces diverge at CE polling.
+- Gate Array + PAL (`rtl/geneve_ga.sv`, MAME genboard.cpp), wait states, mapper, GROM emulation.
+- V9938 = ESE VDP with local fixes: default palette on reset, PVIDEODE, an R#14 write keeps the
+  auto-incremented A13-A0, a second control byte 11xxxxxx is ignored (MAME/openMSX; Geneve Tetris sends
+  04 CE before every picture byte), 192K expansion RAM via R#45 (OSD Video RAM; no known software uses it).
+- Clocks: MM58274 (`rtl/mm58274.sv`) and the IDE card's bq4847 (`rtl/bcd_clock.sv`) are loaded once from the
+  MiSTer RTC and run on their own (the MiSTer sends the time only once).
+- Genmod (OSD Memory = Genmod 2M; sim `--genmod --rom roms/gnmbt100.bin [--rom2 roms/gnmbt200.bin]`): MAME's
+  genmod with the TI mode switch on (as hloberg's setup) and TURBO on. Genmod boot EPROMs at boot.rom
+  98000/9C000. The Memex (2 MiB, SDRAM 200000-3FFFFF) answers physical pages 40-E7 (F_EXP/F_BOX/F_SRAMU)
+  except the BA mirrors and 10xxx010 (MAME memex.cpp default switches); DRAM, SRAM, EPROM stay on board, the
+  box's speech and IDE card answer first. TURBO drops the wait states of those accesses (MAME also does it
+  for some on-board devices; not done here). Not yet tried: Genmod with boot ROM 2.00 and the IDE disk.
+
+### Peripherals
+- Floppy: Myarc DDCC-1 (`rtl/wd1770.sv` sector level, `rtl/geneve_disk.sv`), V9T9 images, FORMAT works.
+  MDOS 7.45 reads 80-track images; MDOS 6.50 uses 40 tracks unless configured (GENCFG).
+- IDE: Nouspikel card at CRU >1000 in Geneve mode (`rtl/geneve_core.sv`, `rtl/ata_disk.sv`), its 512K SRAM in
+  SDRAM (dram_addr 80000) preloaded from boot.rom with Fred Kaal's IDE DSR v14 (NOT Nouspikel's IDEAL, which
+  has no IDE1 device). Boot ROM 2.00 loads IDE1.LOAD-IDE (the one from BeeryMiller/LOAD-SYS, loads at >A000;
+  the MDOS745DIS copy loads at >2000 and crashes), which loads IDE1.SYSTEM-SYS. MDOS maps the disk to SCS6.
+  (SCSMAP 6A); `ASSIGN C=SCS6:` gives it a drive letter. COPY to it lands in the image on the SD card.
+- Speech: TMS5200 + TMS6100 on the PEB adapter, checked by ear on mister126 (ROM bit-reversed by mkbootrom).
+- Keyboard, joysticks (TI BASIC CALL JOYST), bus mouse (9640 News MOUSE80), sound (CALL SOUND 440 Hz).
+
+### OSD (Geneve.sv)
+MiSTer computer-core OSD standard (~/Downloads/osd-standard.md): top page = media (Pri. DSK1, DSK2, IDE disk,
+Load ROM), Memory, pages Machine / Video / Advanced, "Changes pending", Apply and reset. `cfg` latches `status`
+at every reset; settings use `cfg`. IDE card and Boot ROM have Auto: card on when an IDE disk is mounted, boot ROM
+2.00 when the IDE disk was mounted after the DSK1 floppy (remembered SC slots mount first, an MGL after). A mount that changes the Auto choice resets the machine
+within 5 s after a reset (MGL and remembered SC slots mount then, in any order), an IDE disk mounted or
+removed later resets it too; floppy changes later count at the next reset. Config version v,1 (status
+bits 3 and 4 are no longer used).
+
+### Software tested
+| Software | Result |
+|---|---|
+| MDOS 6.50, 6.70, 7.45 | boot from floppy; 7.45 from IDE (`releases/Geneve_HD.zip`) |
+| 9640 News: MIXPIC, HIMIX3, BATWIND, BOXER, SFXER, MOUSE80 | as MAME |
+| Tetris (GAMES.CHD EXECGAMES) | plays (board) |
+| Pinball 99 | plays (board; start from its own drive, see below) |
+| Flying Shark | plays with Genmod (board); stock Geneve: "Insufficient memory" (also MAME, also 384K SRAM) |
+| Gyruss (geneve9640/gyruss) | title (sim, board image) |
+| GPL 7.40: 48 cartridge images (GAMES.CHD CODGPL) | 33 reach title/game; 15 fail the same way in MAME (below) |
+| EXEC 2.8 (E/A option 5) | Scrabble, SPAD 13, Buck Rogers and Congo Bongo titles; Eric in Monsterland: "Unsupported GPL access attempted" (EXEC) |
+| MyArt 1.4 (MAIN.CHD) | stops at "Loading Please Wait", as in MAME |
+
+- EXEC-style loaders (PINLOAD, SHARKLOAD) open their ROM image in the current directory and say "I/O Error,
+  ... aborted" otherwise: `B:` then `PINLOAD PINBALL` (hloberg's batch files `CD` into the game directory).
+- Cartridges: AUTOEXEC `TIMODE2|GPL B:NAME`, then F7 (ExeMod) in GPL's menu. These stay in GPL's menu with
+  module "MENU": 4A Flyer, Donkey Kong, Hopper, Jungle Hunt, Pac-Man, Pole Position, Sneggit, Anteater,
+  Henpecked, Munchman II, Princess and Frog, Rotor Raider, Schnozola, Topper; Demon Attack shows garbage;
+  Junkman Jr "Can't load". MAME does the same (checked Anteater, Donkey Kong, Topper, Demon Attack). hloberg
+  starts them with `MYGPL /1`, now on the hard disk image.
+- hloberg's MAME package (MAIN/GAMES/DEVELOP.CHD) is for MAME's genmod with an HFDC; TIImageTool's
+  CommandShell exports from it (`export IMG DIR.SUBDIR`). MAME's natkeyboard doesn't reach the Geneve keyboard;
+  the scratchpad `keys.lua` presses its ioport fields instead.
 
 ## Layout
 
 | Path | What |
 |---|---|
-| `rtl/geneve_core.sv` | the machine: CPU, gate array, 9901, VDP, SN76496, RTC, SRAM/EPROM, DDCC-1, bus handshake |
+| `Geneve.sv` | MiSTer top: OSD, cfg latch, SDRAM (DRAM, IDE SRAM, Memex), floppy/IDE images, RTC, video, audio |
+| `rtl/geneve_core.sv` | the machine: CPU, gate array, 9901, VDP, SN76496, clocks, SRAM/EPROM, box cards, bus handshake |
 | `rtl/tms9995/` | CPU; `tms9995_ucode.svh` generated by `tools/gen_tms9995_ucode.py` |
-| `rtl/geneve_ga.sv` | Gate Array + PAL16R4 (MAME genboard.cpp) |
-| `rtl/tms9901.sv`, `rtl/mm58274.sv`, `rtl/wd1770.sv` | PSI, RTC, floppy controller (sector level) |
-| `rtl/vdp/` | ESE VDP (OCM-PLD), VDP_ID 0 = V9938; local changes: reset palette, PVIDEODE, a WHEN OTHERS |
+| `rtl/geneve_ga.sv` | Gate Array + PAL16R4 (MAME genboard.cpp), Genmod TURBO |
+| `rtl/tms9901.sv`, `rtl/mm58274.sv`, `rtl/bcd_clock.sv`, `rtl/wd1770.sv`, `rtl/ata_disk.sv` | PSI, clocks, floppy and IDE |
+| `rtl/vdp/` | ESE VDP (OCM-PLD), VDP_ID 0 = V9938, with the local changes above |
 | `rtl/geneve_disk.sv`, `rtl/ps2_xt.sv`, `rtl/dbg_uart.sv`, `rtl/sdram.sv`, `rtl/pll*` | MiSTer glue |
-| `verilator/` | headless sim: `make`, `./obj_dir_headless/Vtop --dsk1 X.dsk --frames 1500 --screenshot 1500` |
-| `tools/tracecmp.py` | compare a sim trace (`--trace`) with a MAME debugger trace |
-| `tools/remote_sync.sh`, `tools/kvms.sh` | copy tracked files to misterubuntu; MiSTerKVMS CLI for mister126 |
-| `tools/tidsk.py` | V9T9 floppy images: list, extract, new image, add TIFILES / DIS/VAR 80 files |
-| `tools/compare_run.sh` | the same MDOS session (AUTOEXEC) in MAME and the sim, screenshots side by side |
-| `tools/mkbootrom.py` | boot.rom for the MiSTer (both boot ROMs, DDCC-1 DSR, IDE SRAM) |
-| `tools/mkideimage.sh`, `tools/mkidesram.py` | IDE disk image (MDOS boot) and IDE card SRAM image with Kaal's DSR |
-| `tools/timt/MakeIDE.java` | IDE image creation with TIImageTool's classes (compile TIImageTool from emulators/tiimagetool with the RXTX jar + a gnu.io.DriverManager stub) |
+| `verilator/` | headless sim: `make`, `./obj_dir_headless/Vtop --help`; variants with `make HL_DIR=obj_dir_X EXTRA=+define+...` |
+| `releases/Geneve_HD.zip` | the shipped hard disk image (`tools/mkhdrelease.sh`) |
+| `tools/mkbootrom.py` | boot.rom (boot EPROMs, DDCC-1 DSR, IDE SRAM, speech ROM, Genmod EPROMs) |
+| `tools/mkideimage.sh`, `tools/mkidesram.py`, `tools/timt/MakeIDE.java` | IDE images with TIImageTool's classes (compile TIImageTool from emulators/tiimagetool with the RXTX jar + a gnu.io.DriverManager stub; TIMT / TIMT_LIB point at them) |
+| `tools/tidsk.py` | V9T9 floppy images: list, extract, new, add TIFILES / DIS/VAR 80; DIS/VAR 80 as TIFILES |
+| `tools/compare_run.sh`, `tools/regress.sh`, `tools/tracecmp.py` | MAME vs sim, build vs build, trace compare |
+| `tools/remote_sync.sh`, `tools/kvms.sh` | copy tracked files to misterubuntu (git ls-files: add new files first); MiSTerKVMS CLI for mister126 |
 
-`docs/`, `software/`, `emulators/`, `fpga_refs/` are local research material (gitignored); where it came from: SOURCES.md (keep it updated).
+`docs/`, `software/`, `emulators/`, `fpga_refs/` are local research material (gitignored); where it came
+from: SOURCES.md (keep it updated).
 
-## Board files
+## Board files (mister126)
 
-Core `_Computer/Geneve_20261022.rbf` (Genmod), boot.rom 640 KiB with the Genmod EPROMs (old one kept as boot_20261021.rom).
-
-`/media/fat/games/Geneve/boot.rom` from tools/mkbootrom.py: genbt100.bin + ddcc1.u3 + genbt200.bin (MAME sets)
-+ IDE SRAM at 10000 (tools/mkidesram.py on IDEDSR14.dsk), 576 KiB; the old 24 KiB file still works without IDE/2.00.
-`MDOS745_IDE.hdv` (tools/mkideimage.sh) + `_Geneve/Geneve MDOS745 IDE.mgl` (needs OSD Boot ROM 2.00, IDE card On);
-disks `MDOS650.dsk`, `MDOS670b_720k.dsk`; MGL `/media/fat/_Geneve/Geneve MDOS650.mgl`.
+- `_Computer/Geneve_20261022b.rbf` (all MGLs use it); older: `Geneve_20261022.rbf`, `Geneve_20261021.rbf`.
+- `games/Geneve/boot.rom` 640 KiB, all parts (`boot_20261021.rom`: without the Genmod EPROMs).
+- `_Geneve/*.mgl`: Geneve Hard Disk (Geneve_HD.hdv), Flying Shark (Genmod; set Memory = Genmod 2M), Pinball,
+  Tetris, MDOS650, MDOS650 + 9640News, MDOS670b, MDOS745 IDE, Mouse demo, TI BASIC (MDOS 7.45), Adventure (GPL).
 
 ## Gotchas found
 
 - CPU/GA use blocking assignments inside `always_ff` (as MAME's code); their ports must be NB-registered
-  copies or Verilator lets other blocks see values one clk early.
+  copies inside the same always_ff, or Verilator lets other blocks see values one clk early and the FPGA
+  reads stale flops.
 - The V9938 loads a default palette on reset; the ESE VDP did not (MSX BIOS wrote it).
 - 9901 P1 = 1 is a one-shot VDP reset. The XT keyboard must send AA after power-on / clock-low reset.
 - Quartus 17 rejects out-of-range constant indexes in unrolled loops even when guarded.
-- NB port copies must be inside the same always_ff as the blocking code (a separate block reads stale flops
-  on the FPGA while Verilator shows fresh values).
 - MGL file paths are relative to games/Geneve/. The box reset (9901 P0) must clear the DDCC-1 latch, or a
   retry after a failed boot finds the DSR in the wrong EPROM bank.
 - `make sd` runs the floppy through rtl/geneve_disk.sv and an hps_io SD model (`--mount-at F` mounts late).
+- ROM download ranges are checked in three places (Geneve.sv rom_wr, verilator/sim.v rom_wr, geneve_core):
+  a new boot.rom part needs all three.
+- MAME: bios 2.00 nvram is `nvram/geneve_2/` (geneve) but `nvram/genmod_1/` (genmod); the IDE card's SRAM
+  (`peb_slot8_ide_sram512`) must be restored from idesram.bin before each run.
 
 ## Next
 
-1. Optional: 384K SRAM (MAME "Ultimate" SRAM at pages C0-E7; MDOS does not use it), boot ROM 0.98, RS232.
-2. IDE on the board (mister126); MDOS 7.46; bq4847 clock registers are static (time of the last RTC load).
-3. Mouse (V9938 colour bus), joystick check, sound check, OSD options (boot ROM version, VRAM 192K).
+1. Genmod with boot ROM 2.00 and the IDE disk (sim and board).
+2. HFDC CHD to IDE converter (TIImageTool classes, creating directories) so hloberg's MAIN/GAMES/DEVELOP
+   collections run from the IDE disk; their batch files need SCS6 paths.
+3. More software: `MYGPL /1` for the 15 cartridges, Extended BASIC 2.6 (DEVELOP.CHD XB) and its games,
+   Infocom (GAMES.CHD INFOCOM), MyArt from its own directory.
+4. Optional: RS232 (TI RS232 card), boot ROM 0.98 (in MAME's set), a second IDE drive.

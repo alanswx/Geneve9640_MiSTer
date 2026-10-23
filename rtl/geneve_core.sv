@@ -515,8 +515,8 @@ wire [5:0] ide_pg = (box_addr[13:12] == 2'b00 && !ide_q[3]) ? 6'd0 : ide_page;
 
 assign inta = ide_q[6] && ata_intrq;
 
-// bq4847 registers from the MiSTer RTC (not running: the time of the last load)
-always_ff @(posedge clk) if (rtc_load) ide_time <= rtc_bcd;
+// bq4847 registers: the MiSTer RTC, loaded once and kept running here
+bcd_clock #(.CLK_HZ(CLK_HZ)) ide_clock (.clk(clk), .load(rtc_load), .din(rtc_bcd), .q(ide_time));
 
 function automatic [7:0] bq4847(input [3:0] r);
     case (r)
