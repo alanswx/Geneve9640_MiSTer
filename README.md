@@ -78,6 +78,9 @@ disk, which loads MDOS; MDOS sees the disk as `SCS6.` and the AUTOEXEC assigns i
 | `EXEC file` | runs an Editor/Assembler option 5 program (EXEC 2.8) |
 | `HELP` | the list |
 
+`tools/mkhdcollection.sh` builds a 128 MB disk with hloberg's MAME Geneve collection (MAIN, GAMES, DEVELOP
+as directories, mapped to E: F: G: as in his setup; needs Memory = Genmod 2M) for personal use.
+
 Its files come from the 9640News MDOS 7.46 distribution (MDOS 7.45, GPL 7.40, EXEC 2.8), BeeryMiller/LOAD-SYS
 (`LOAD-IDE`) and geneve9640/gyruss; `tools/mkhdrelease.sh` rebuilds it. `tools/mkideimage.sh` makes other
 images (TIImageTool's classes; see HANDOFF.md).

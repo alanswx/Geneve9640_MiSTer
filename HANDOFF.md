@@ -21,7 +21,8 @@ screen for screen where compared (`tools/compare_run.sh`); `tools/regress.sh` co
   98000/9C000. The Memex (2 MiB, SDRAM 200000-3FFFFF) answers physical pages 40-E7 (F_EXP/F_BOX/F_SRAMU)
   except the BA mirrors and 10xxx010 (MAME memex.cpp default switches); DRAM, SRAM, EPROM stay on board, the
   box's speech and IDE card answer first. TURBO drops the wait states of those accesses (MAME also does it
-  for some on-board devices; not done here). Not yet tried: Genmod with boot ROM 2.00 and the IDE disk.
+  for some on-board devices; not done here). Genmod with boot ROM 2.00 boots MDOS from the IDE disk
+  (sim and board; Flying Shark from the hard disk).
 
 ### Peripherals
 - Floppy: Myarc DDCC-1 (`rtl/wd1770.sv` sector level, `rtl/geneve_disk.sv`), V9T9 images, FORMAT works.
@@ -63,6 +64,13 @@ bits 3 and 4 are no longer used).
   Henpecked, Munchman II, Princess and Frog, Rotor Raider, Schnozola, Topper; Demon Attack shows garbage;
   Junkman Jr "Can't load". MAME does the same (checked Anteater, Donkey Kong, Topper, Demon Attack). hloberg
   starts them with `MYGPL /1`, now on the hard disk image.
+- hloberg's collection on one IDE disk: tools/mkhdcollection.sh (tools/timt/CopyTree.java copies whole trees
+  between images and host folders; tools/repath.py rewrites HDSn. device names). MDOS ASSIGN takes a
+  directory (`ASSIGN F=C:\GAMES`, no trailing period: the alias gets a period appended, see L9/PARSEFS), so
+  his E:/F:/G: batch files run unchanged. Needs Genmod (TIMODE + RAM disk leave too little of 512K; MDOS
+  then says "Bad command" for MYGPL). Board: FROGGER (MYGPL /1), FLYSHARK, ZORKI (Infocom) work.
+- The OSD saves settings only with System page > Save settings (Main menu.cpp); the saved config is
+  Geneve_v1.CFG and applies at core start (Genmod from a saved config verified with MEM: 230 pages).
 - hloberg's MAME package (MAIN/GAMES/DEVELOP.CHD) is for MAME's genmod with an HFDC; TIImageTool's
   CommandShell exports from it (`export IMG DIR.SUBDIR`). MAME's natkeyboard doesn't reach the Geneve keyboard;
   the scratchpad `keys.lua` presses its ioport fields instead.
@@ -114,9 +122,7 @@ from: SOURCES.md (keep it updated).
 
 ## Next
 
-1. Genmod with boot ROM 2.00 and the IDE disk (sim and board).
-2. HFDC CHD to IDE converter (TIImageTool classes, creating directories) so hloberg's MAIN/GAMES/DEVELOP
-   collections run from the IDE disk; their batch files need SCS6 paths.
-3. More software: `MYGPL /1` for the 15 cartridges, Extended BASIC 2.6 (DEVELOP.CHD XB) and its games,
+1. Testers' reports (tester package: README in ~/Downloads/Geneve_tester_*.zip, built from the board files).
+2. More software: `MYGPL /1` for the 15 cartridges, Extended BASIC 2.6 (DEVELOP.CHD XB) and its games,
    Infocom (GAMES.CHD INFOCOM), MyArt from its own directory.
-4. Optional: RS232 (TI RS232 card), boot ROM 0.98 (in MAME's set), a second IDE drive.
+3. Optional: RS232 (TI RS232 card), boot ROM 0.98 (in MAME's set), a second IDE drive.

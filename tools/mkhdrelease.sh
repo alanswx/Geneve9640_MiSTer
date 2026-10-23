@@ -7,7 +7,7 @@
 #
 # MDOS746DIS: the unzipped 9640News MDOS746DIS.zip (its MDOS/SYSTEM-SYS is MDOS 7.45);
 # GYRUSS_TIFILES: github.com/geneve9640/gyruss TIFILES; LOAD-SYS: github.com/BeeryMiller/LOAD-SYS.
-# TIMT / TIMT_LIB as for tools/mkideimage.sh.
+# TIMT / TIMT_LIB as for tools/mkideimage.sh; SIZE (MB, default 32).
 set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 M=$1; GYR=$2; LS=$3; DSR=$4; OUT=$5
@@ -22,7 +22,7 @@ txt HELP 'ECHO|ECHO Geneve 9640 MiSTer hard disk (IDE1 = SCS6. = C:)|ECHO|ECHO G
 txt GYRUSS 'GYRLOAD SCS6.GYRUSS1'
 txt TI 'TIMODE2|SCS6.MYGPL'
 mkdir -p "$OUT"
-"$ROOT/tools/mkideimage.sh" "$OUT/Geneve_HD.hdv" 32 "$M/MDOS/SYSTEM-SYS" "$LS/LOAD-IDE" "$DSR" "$T/idesram.bin" "$T"
+"$ROOT/tools/mkideimage.sh" "$OUT/Geneve_HD.hdv" "${SIZE:-32}" "$M/MDOS/SYSTEM-SYS" "$LS/LOAD-IDE" "$DSR" "$T/idesram.bin" "$T"
 rm -f "$OUT/Geneve_HD.zip"
 (cd "$OUT" && zip -q -9 Geneve_HD.zip Geneve_HD.hdv)
 rm -rf "$T"
