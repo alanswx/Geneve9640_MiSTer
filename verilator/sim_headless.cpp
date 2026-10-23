@@ -31,6 +31,7 @@ struct Options {
     std::string ide, ide_sram;             // --ide IMAGE, --ide-sram FILE: IDE card with disk and SRAM
     bool        ide_log = false;
     bool        vram192 = false;               // --vram192: 64 KiB V9938 expansion RAM
+    bool        genmod = false;                // --genmod: Genmod (--rom/--rom2 are Genmod boot ROMs), Memex
     std::string speech;                    // --speech ROM: speech synthesizer with this 32 KiB ROM
     std::string speech_wav;                // --speech-wav FILE: the speech output alone
     std::string dsk[2];
@@ -67,6 +68,7 @@ static void usage()
 "  --ide IMAGE            IDE card at CRU >1000 with this disk (512-byte sector dump; written back)\n"
 "  --ide-sram FILE        IDE card SRAM contents (Kaal's IDE DSR, tools/mkidesram.py); --ide-log\n"
 "  --vram192              192 KiB video RAM (V9938 expansion RAM)\n"
+"  --genmod               Genmod with a 2 MiB Memex; --rom / --rom2 are then gnmbt100.bin / gnmbt200.bin\n"
 "  --speech ROM           speech synthesizer with this 32 KiB ROM (cd2325a.vsm + cd2326a.vsm)\n"
 "  --speech-wav FILE      WAV of the speech synthesizer output alone\n"
 "  --frames N             stop after N video frames (default 60)\n"
@@ -447,6 +449,7 @@ int Sim::run()
     top->boot200 = !rom2.empty();
     top->ide_en = !opt.ide.empty() || !isram.empty();
     top->vram192 = opt.vram192;
+    top->genmod = opt.genmod;
     std::vector<uint8_t> sprom;
     if (!opt.speech.empty() && (!load_file(opt.speech, sprom) || sprom.size() != 32768)) { fprintf(stderr, "cannot load speech ROM %s\n", opt.speech.c_str()); return 1; }
     top->speech_en = !sprom.empty();
@@ -473,6 +476,18 @@ int Sim::run()
         top->rom_addr = 0x10000 + i;
         top->rom_data = isram[i];
         tick();
+    }
+    // Genmod boot ROMs: 98000 (1.00), 9C000 (2.00)
+    for (size_t i = 0; opt.genmod && i < 16384; i++) {
+        top->rom_wr = 1;
+        top->rom_addr = 0x98000 + i;
+        top->rom_data = rom[i];
+        tick();
+        if (!rom2.empty()) {
+            top->rom_addr = 0x9c000 + i;
+            top->rom_data = rom2[i];
+            tick();
+        }
     }
     top->rom_wr = 0;
     // the IDE image is mounted while the core is in reset (as an MGL does before an OSD reset)
@@ -611,6 +626,7 @@ int main(int argc, char **argv)
         else if (a == "--ide-sram") o.ide_sram = next();
         else if (a == "--ide-log") o.ide_log = true;
         else if (a == "--vram192") o.vram192 = true;
+        else if (a == "--genmod") o.genmod = true;
         else if (a == "--speech") o.speech = next();
         else if (a == "--speech-wav") o.speech_wav = next();
         else if (a == "--dsk1") o.dsk[0] = next();

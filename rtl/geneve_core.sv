@@ -19,7 +19,7 @@ module geneve_core #(
     input  logic        reset,
 
     // ROM download: 0000-3FFF boot EPROM 1.00, 4000-5FFF DDCC-1 DSR, 6000-9FFF boot EPROM 2.00,
-    // 90000-97FFF speech ROM (TMS6100 pair)
+    // 90000-97FFF speech ROM (TMS6100 pair), 98000-9BFFF / 9C000-9FFFF Genmod boot EPROMs 1.00 / 2.00
     input  logic        rom_wr,
     input  logic [19:0] rom_addr,
     input  logic [7:0]  rom_data,
@@ -27,12 +27,13 @@ module geneve_core #(
     input  logic        ide_en,        // IDE card at CRU >1000
     input  logic        vram192,       // 64 KiB V9938 expansion RAM (R#45 MXC/MXS/MXD), 192 KiB in all
     input  logic        speech_en,     // speech synthesizer in the box
+    input  logic        genmod,        // Genmod: Genmod boot EPROM, 2 MiB Memex, TURBO and TI mode switches on
 
-    // DRAM (512 KiB) at 00000-7FFFF, IDE card SRAM (512 KiB) at 80000-FFFFF:
-    // one request at a time, answered with dram_ack
+    // DRAM (512 KiB) at 00000-7FFFF, IDE card SRAM (512 KiB) at 80000-FFFFF, Memex (2 MiB) at
+    // 200000-3FFFFF: one request at a time, answered with dram_ack
     output logic        dram_req,
     output logic        dram_we,
-    output logic [19:0] dram_addr,
+    output logic [21:0] dram_addr,
     output logic [7:0]  dram_wdata,
     input  logic [7:0]  dram_rdata,
     input  logic        dram_ack,
@@ -227,6 +228,7 @@ geneve_ga ga (
     .extready(1'b1), .sndready(sndready),
     .sysspeed(p_dir[7] ? p_out[7] : 1'b1),
     .vwaiten(p_dir[9] ? p_out[9] : 1'b0),
+    .gm_turbo(genmod),
     .ready(cpu_ready),
     .func(func), .physpage(physpage), .dram_addr(ga_dram_addr),
     .dec_read(dec_read), .geneve_mode(geneve_mode),
@@ -303,7 +305,7 @@ end
 // Memories: SRAM (stock + expansion, 64 KiB), boot EPROMs, DDCC-1 DSR
 //----------------------------------------------------------------------------
 logic [7:0] sram  [0:65535];
-logic [7:0] eprom [0:32767];
+logic [7:0] eprom [0:65535];
 logic [7:0] dsr   [0:8191];
 logic [7:0] fdcram [0:2047];
 logic [7:0] sram_q, eprom_q, dsr_q, fdcram_q;
@@ -319,14 +321,15 @@ always_ff @(posedge clk) begin
     sram_q <= sram[sram_a];
 end
 
-// one write port (block RAM): 1.00 from 0000-3FFF, 2.00 from 6000-9FFF
+// one write port (block RAM): 1.00 from 0000-3FFF, 2.00 from 6000-9FFF, Genmod 1.00 / 2.00 from 98000-9FFFF
 wire [15:0] rom_addr2 = rom_addr[15:0] - 16'h6000;
 wire        rom_lo   = rom_addr[19:16] == 4'd0;
-wire        eprom_we = rom_wr && rom_lo && (rom_addr[15:0] < 16'h4000 || (rom_addr[15:0] >= 16'h6000 && rom_addr[15:0] < 16'ha000));
-wire [14:0] eprom_wa = (rom_addr[15:0] < 16'h4000) ? {1'b0, rom_addr[13:0]} : {1'b1, rom_addr2[13:0]};
+wire        rom_gm   = rom_addr[19:15] == 5'b10011;
+wire        eprom_we = rom_wr && ((rom_lo && (rom_addr[15:0] < 16'h4000 || (rom_addr[15:0] >= 16'h6000 && rom_addr[15:0] < 16'ha000))) || rom_gm);
+wire [15:0] eprom_wa = rom_gm ? {1'b1, rom_addr[14:0]} : (rom_addr[15:0] < 16'h4000) ? {2'b00, rom_addr[13:0]} : {2'b01, rom_addr2[13:0]};
 always_ff @(posedge clk) begin
     if (eprom_we) eprom[eprom_wa] <= rom_data;
-    eprom_q <= eprom[{boot200, physpage[0], bus_addr[12:0]}];
+    eprom_q <= eprom[{genmod, boot200, physpage[0], bus_addr[12:0]}];
 end
 
 always_ff @(posedge clk) begin
@@ -567,10 +570,19 @@ geneve_speech speech_i (               // CLK_HALF 21 (default): 21.477 MHz / 42
     .rom_addr(speech_rom_a), .rom_data(speech_rom_q)
 );
 
-// DRAM-like accesses (through SDRAM): the DRAM proper and the IDE card SRAM
-wire        mem_sel  = (func == F_DRAM || func == F_GROM) || ide_sram;
-wire        mem_wsel = (func == F_DRAM || func == F_GROM) || (ide_sram && !ide_q[5]);
-wire [19:0] mem_addr = ide_sram ? {1'b1, ide_pg, box_addr[12:0]} : {1'b0, ga_dram_addr};
+// Memex (Genmod): 2 MiB in the box, answering every physical address that reaches it (MAME
+// geneve_memex_device with its default switches) except the BA mirrors (3A/7A/BA/FA) and the
+// pages 10xxx010 (DSR space mirrors). With the Genmod TI mode switch on, DRAM, SRAM and EPROM
+// stay on the board; the on-board devices of the box (speech, IDE card) answer first.
+wire        memex_sel = genmod && (func == F_EXP || func == F_BOX || func == F_SRAMU)
+                        && physpage[5:0] != 6'h3a && (physpage & 8'hc7) != 8'h82
+                        && !speech_sel && !(ide_space && (ide_sram || ide_mmap));
+
+// DRAM-like accesses (through SDRAM): the DRAM proper, the IDE card SRAM and the Memex
+wire        mem_sel  = (func == F_DRAM || func == F_GROM) || ide_sram || memex_sel;
+wire        mem_wsel = (func == F_DRAM || func == F_GROM) || (ide_sram && !ide_q[5]) || memex_sel;
+wire [21:0] mem_addr = memex_sel ? {1'b1, physpage, bus_addr[12:0]}
+                     : ide_sram ? {2'b01, ide_pg, box_addr[12:0]} : {3'b000, ga_dram_addr};
 
 //----------------------------------------------------------------------------
 // Bus cycle handling
@@ -587,10 +599,10 @@ logic        dbusy_rd;       // ... and it is a read
 logic        pf_valid;       // read-ahead data for the current access
 logic [7:0]  pf_data;
 logic        rd_want;        // read-ahead wanted (DRAM was busy)
-logic [19:0] rd_addr;
+logic [21:0] rd_addr;
 logic        rs_wait;        // the read phase came before the data
 logic        wq;             // a write waiting for the DRAM
-logic [19:0] wq_addr;
+logic [21:0] wq_addr;
 logic [7:0]  wq_data;
 
 always_ff @(posedge clk) begin

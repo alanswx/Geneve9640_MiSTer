@@ -35,6 +35,7 @@ module geneve_ga (
     input  logic        sndready,      // READY from the sound chip
     input  logic        sysspeed,      // 9901 P7 (PAL pin 5)
     input  logic        vwaiten,       // 9901 P9 (PAL pin 19)
+    input  logic        gm_turbo,      // Genmod with TURBO on: no wait states for the Memex
     output logic        ready,         // READY to the CPU
 
     // decoded access (valid after as)
@@ -124,6 +125,7 @@ endfunction
 
 // READY as the CPU samples it: after the rising CLKOUT edge, before the falling one
 logic ready_q;
+logic turbo_acc;         // Genmod TURBO: this access goes to the Memex without wait states
 
 
 //----------------------------------------------------------------------------
@@ -182,6 +184,7 @@ always_ff @(posedge clk) begin
         pin3 = 1'b1; pin4 = 1'b1; pin5 = 1'b1; pin9 = 1'b1; pin19 = 1'b0;
         q14 = 1'b0; q15 = 1'b0; q16 = 1'b0; q17 = 1'b0;
         ready_q = 1'b1;
+        turbo_acc = 1'b0;
     end else begin
         // 9901 outputs into the PAL (only once written; MAME keeps the
         // constructor values until then, the board passes them on change)
@@ -265,6 +268,10 @@ always_ff @(posedge clk) begin
             dec_read_v = dbin;
             have_extra_waitstate = enable_extra_waitstates;
             have_waitstate = (f != F_SRAM && f != F_SRAMX) || have_extra_waitstate;
+            // Genmod board (MAME genmod_decoder_device::gaready_out): with TURBO, READY stays up
+            // except for on-board devices, the DRAM area (TI mode), SRAM, EPROM and page BA.
+            // Here only for the accesses that reach the Memex (the TI mode switch is always on).
+            turbo_acc = gm_turbo && (f == F_EXP || f == F_BOX || f == F_SRAMU) && pg != 8'hba;
             // PAL video select inputs
             pin9 = !(f == F_VIDEO && !dbin);
             pin4 = !(f == F_VIDEO && dbin);
@@ -303,7 +310,7 @@ always_ff @(posedge clk) begin
     dram_addr <= (func_v == F_GROM) ? {3'b111, dec_offset} : {physpage_v[5:0], dec_offset[12:0]};
     kbdint <= keyboard_shift_reg[0];
     kbd_ready <= shift_reg_enabled && (keyboard_shift_reg == 9'd0);
-    ready <= ready_q;
+    ready <= turbo_acc ? (extready && sndready) : ready_q;
 end
 /* verilator lint_on BLKSEQ */
 

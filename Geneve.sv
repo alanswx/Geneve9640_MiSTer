@@ -66,6 +66,7 @@ localparam CONF_STR = {
 	"O[4],IDE card (CRU 1000),Off,On;",
 	"O[5],Video RAM,128K,192K;",
 	"O[6],Speech synthesizer,On,Off;",
+	"O[7],Genmod (Memex 2M),Off,On;",
 	"-;",
 	"O[122:121],Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
 	"-;",
@@ -166,22 +167,23 @@ wire reset = RESET | status[0] | buttons[1] | ioctl_download | ~pll_locked;
 
 // The core asks for one byte at a time on clk_sys (dram_req, one clk) and
 // waits for dram_ack. The controller runs on clk_mem = 4 x clk_sys (same PLL).
-// 00000-7FFFF: DRAM, 80000-FFFFF: IDE card SRAM, loaded from boot.rom 10000-8FFFF
+// 00000-7FFFF: DRAM, 80000-FFFFF: IDE card SRAM, loaded from boot.rom 10000-8FFFF,
+// 200000-3FFFFF: Memex (Genmod)
 // during the download (the core is in reset then).
 wire        dram_req, dram_we;
-wire [19:0] dram_addr;
+wire [21:0] dram_addr;
 wire  [7:0] dram_wdata;
 reg   [7:0] dram_rdata;
 reg         dram_ack;
 
 reg         sd_req_t = 0, sd_done_t = 0;     // toggles: clk_sys -> clk_mem, clk_mem -> clk_sys
 reg         sd_we_r;
-reg  [19:0] sd_addr_r;
+reg  [21:0] sd_addr_r;
 reg   [7:0] sd_wdata_r;
 reg         ld_pend = 0;
 
 wire        ld_sram = ioctl_download && ioctl_wr && ioctl_index == 16'd0 && ioctl_addr >= 27'h10000 && ioctl_addr < 27'h90000;
-wire [19:0] ld_addr = ioctl_addr[19:0] - 20'h10000 + 20'h80000;
+wire [21:0] ld_addr = {2'b00, ioctl_addr[19:0] - 20'h10000 + 20'h80000};
 assign      ld_busy = ld_pend;
 
 always @(posedge clk_sys) begin
@@ -246,7 +248,7 @@ sdram sdram
 	.SDRAM_nCS(SDRAM_nCS), .SDRAM_nWE(SDRAM_nWE), .SDRAM_nRAS(SDRAM_nRAS), .SDRAM_nCAS(SDRAM_nCAS),
 	.SDRAM_CKE(SDRAM_CKE), .SDRAM_CLK(SDRAM_CLK),
 	.wtbt(2'b00),
-	.addr({5'd0, sd_addr_r}),
+	.addr({3'd0, sd_addr_r}),
 	.dout(sdram_dout),
 	.din({8'h00, sd_wdata_r}),
 	.we(sdram_we),
@@ -368,13 +370,14 @@ geneve_core core
 	.clk(clk_sys),
 	.reset(reset),
 
-	.rom_wr(ioctl_download && ioctl_wr && ioctl_index == 16'd0 && (ioctl_addr < 27'ha000 || (ioctl_addr >= 27'h90000 && ioctl_addr < 27'h98000))),
+	.rom_wr(ioctl_download && ioctl_wr && ioctl_index == 16'd0 && (ioctl_addr < 27'ha000 || (ioctl_addr >= 27'h90000 && ioctl_addr < 27'ha0000))),
 	.rom_addr(ioctl_addr[19:0]),
 	.rom_data(ioctl_dout),
 	.boot200(status[3]),
 	.ide_en(status[4]),
 	.vram192(status[5]),
 	.speech_en(~status[6]),
+	.genmod(status[7]),
 
 	.dram_req(dram_req), .dram_we(dram_we), .dram_addr(dram_addr), .dram_wdata(dram_wdata),
 	.dram_rdata(dram_rdata), .dram_ack(dram_ack),

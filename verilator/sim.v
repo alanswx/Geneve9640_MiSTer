@@ -15,6 +15,7 @@ module top(
    input         ide_en,
    input         vram192,
    input         speech_en,
+   input         genmod,
 
    // IDE disk image: hps_io sd_* of one drive
    input         ide_mounted,
@@ -100,12 +101,19 @@ assign dbg_waddr = core.bus_addr;
 assign dbg_wdata = core.bus_dout;
 
 wire        dram_req, dram_we;
-wire [19:0] dram_addr;
+wire [21:0] dram_addr;
 wire  [7:0] dram_wdata;
 reg   [7:0] dram_rdata;
 reg         dram_ack;
-reg   [7:0] dram [0:1048575];      // DRAM, then the IDE card SRAM
+reg   [7:0] dram [0:4194303];      // DRAM, the IDE card SRAM, (2 MiB up) the Memex
 
+`ifdef GM_DEBUG
+integer gm_n = 0;
+always @(posedge clk) if ((core.bus_as || core.bus_rs || core.bus_ack) && gm_n < 40) begin
+   gm_n <= gm_n + 1;
+   $display("c=%0d as=%b rs=%b ack=%b we=%b addr=%04x func=%0d pg=%02x rdy=%b din=%02x eq=%02x", core.dbg_cycles, core.bus_as, core.bus_rs, core.bus_ack, core.bus_we, core.bus_addr, core.func, core.physpage, core.cpu_ready, core.bus_din, core.eprom_q);
+end
+`endif
 `ifdef DRAM_DEBUG
 always @(posedge clk) if ((core.bus_as || core.bus_rs || core.bus_ack) && core.dbg_cycles > 4268600 && core.dbg_cycles < 4268700)
    $display("t=%0d c=%0d as=%b rs=%b we=%b ack=%b addr=%04x dout=%02x onchip=%b func=%0d pend_w=%b", $time, core.dbg_cycles, core.bus_as, core.bus_rs, core.bus_we, core.bus_ack, core.bus_addr, core.bus_dout, core.bus_onchip, core.func, core.pend_write);
@@ -116,10 +124,10 @@ always @(posedge clk) if (dram_req && dram_addr < 19'h4) $display("DRAM %s %05x 
 `define DRAM_LAT 8
 `endif
 reg [4:0] dram_cnt = 0;
-reg [19:0] dram_a_r;
+reg [21:0] dram_a_r;
 reg dram_we_r;
 reg [7:0] dram_wd_r;
-wire [19:0] sram_load_a = rom_addr - 20'h10000 + 20'h80000;
+wire [21:0] sram_load_a = {2'b00, rom_addr - 20'h10000 + 20'h80000};
 always @(posedge clk) begin
    if (rom_wr && rom_addr >= 20'h10000 && rom_addr < 20'h90000) dram[sram_load_a] <= rom_data;
    dram_ack <= 1'b0;
@@ -220,8 +228,8 @@ assign sd_buff_din0 = 0; assign sd_buff_din1 = 0;
 
 geneve_core core (
    .clk(clk), .reset(reset),
-   .rom_wr(rom_wr && (rom_addr < 20'h0a000 || (rom_addr >= 20'h90000 && rom_addr < 20'h98000))), .rom_addr(rom_addr), .rom_data(rom_data),
-   .boot200(boot200), .ide_en(ide_en), .vram192(vram192), .speech_en(speech_en),
+   .rom_wr(rom_wr && (rom_addr < 20'h0a000 || (rom_addr >= 20'h90000 && rom_addr < 20'ha0000))), .rom_addr(rom_addr), .rom_data(rom_data),
+   .boot200(boot200), .ide_en(ide_en), .vram192(vram192), .speech_en(speech_en), .genmod(genmod),
    .dram_req(dram_req), .dram_we(dram_we), .dram_addr(dram_addr), .dram_wdata(dram_wdata),
    .dram_rdata(dram_rdata), .dram_ack(dram_ack),
    .vga_r(vga_r), .vga_g(vga_g), .vga_b(vga_b), .vga_hs_n(vga_hs_n), .vga_vs_n(vga_vs_n),

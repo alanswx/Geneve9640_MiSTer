@@ -19,12 +19,26 @@
   control byte with bits 7-6 = 11 is ignored (MAME/openMSX; it was a register write). Tetris sends 04 CE
   before every picture byte. Regression: tools/regress.sh VTOP OUT (screenshot md5s, compare two builds).
 - Native games found in hloberg's GAMES.CHD (MAME HFDC image; TIImageTool CommandShell export works on it):
-  EXECGAMES.{TETRIS,PINB,SHARK,SCRABBLE,SP}; Flying Shark needs memory above 512K (Memex/384K).
+  EXECGAMES.{TETRIS,PINB,SHARK,SCRABBLE,SP}. hloberg runs them from batch files in GAMES.CHD ARCADEB
+  (`CD F:\EXECGAMES.SHARK` then `SHARKLOAD SHARK`): the EXEC-style loaders (PINLOAD, SHARKLOAD) open their
+  ROM image (PINROM256, SHARK512) in the *current directory*, and say "I/O Error, ... aborted" otherwise
+  (that was the earlier "Pinball fails" result, in MAME too). Start them with AUTOEXEC `B:|PINLOAD PINBALL`.
   Tetris plays on mister126 ("Geneve Tetris" MGL: TetrisBoot.dsk with AUTOEXEC B:TETRIS + Games1.dsk).
-  PINLOAD (Pinball) from the IDE disk: "I/O Error, PINLOAD aborted" loading PINROM256, same in MAME (IDE).
-  SCRA/SPAD13A are E/A option 5 images (need an EXEC-style loader; MDOS says Bad command, as in MAME).
-  MYART 1.4 (MAIN.CHD) stops at "Loading Please Wait" in MAME and in the sim alike (missing files?).
-- MDOS's floppy driver uses 40 tracks unless configured (GENCFG): keep test files below track 40.
+  Pinball 99 (PINROM256, 256K) runs on the stock Geneve from an 80-track floppy (sim, MAME, mister126:
+  "Geneve Pinball" MGL = PinBoot.dsk + Pinball.dsk).
+  Flying Shark (SHARK512, 512K) needs a Memex: on a stock Geneve MDOS says "Insufficient memory" (MAME, even
+  with its 384K SRAM option); it runs on the Genmod (OSD Genmod On; sim, MAME genmod, and mister126:
+  "Geneve Flying Shark (Genmod)" MGL = SharkBoot.dsk + FlyingShark.dsk, set Genmod On, Reset).
+  SCRA/SPAD13A are E/A option 5 images (MDOS says Bad command; hloberg loads them in the E/A cartridge via GPL).
+  MYART 1.4 (MAIN.CHD) stops at "Loading Please Wait" in MAME and in the sim alike (run from its directory?).
+- Genmod (OSD "Genmod (Memex 2M)"; sim --genmod with --rom roms/gnmbt100.bin [--rom2 roms/gnmbt200.bin]):
+  MAME's genmod with the TI mode switch on (as hloberg's setup) and TURBO on. Genmod boot EPROMs from MAME
+  genmod.zip at boot.rom 98000/9C000 (tools/mkbootrom.py parts 7, 8). The Memex (2 MiB, SDRAM 200000-3FFFFF)
+  answers physical pages 40-E7 (F_EXP/F_BOX/F_SRAMU) except the BA mirrors and 10xxx010 (MAME memex.cpp default
+  switches); DRAM, SRAM, EPROM stay on board, the box's speech and IDE card answer first. TURBO: those accesses
+  have no wait states (MAME also drops them for some on-board devices; not done here).
+- MDOS 7.45 reads 80-track DSDD images (2880 sectors) on DSK2 (Flying Shark, Pinball disks); MDOS 6.50 used
+  40 tracks unless configured (GENCFG).
 - Bus mouse (V9938 colour bus, MiSTer PS/2 mouse): 9640 News V1#3 MOUSE80 follows the mouse, right button
   writes, left exits (sim and board). Sim: --mouse FRAME:DX,DY,BUTTONS.
 - OSD Video RAM 192K: V9938 expansion RAM via R#45 MXC/MXS/MXD (checked in the sim with a small test
@@ -73,6 +87,8 @@
 
 ## Board files
 
+Core `_Computer/Geneve_20261022.rbf` (Genmod), boot.rom 640 KiB with the Genmod EPROMs (old one kept as boot_20261021.rom).
+
 `/media/fat/games/Geneve/boot.rom` from tools/mkbootrom.py: genbt100.bin + ddcc1.u3 + genbt200.bin (MAME sets)
 + IDE SRAM at 10000 (tools/mkidesram.py on IDEDSR14.dsk), 576 KiB; the old 24 KiB file still works without IDE/2.00.
 `MDOS745_IDE.hdv` (tools/mkideimage.sh) + `_Geneve/Geneve MDOS745 IDE.mgl` (needs OSD Boot ROM 2.00, IDE card On);
@@ -93,6 +109,6 @@ disks `MDOS650.dsk`, `MDOS670b_720k.dsk`; MGL `/media/fat/_Geneve/Geneve MDOS650
 
 ## Next
 
-1. Optional: 384K SRAM (MAME "Ultimate" SRAM at pages C0-E7), boot ROM 0.98, speech, RS232.
+1. Optional: 384K SRAM (MAME "Ultimate" SRAM at pages C0-E7; MDOS does not use it), boot ROM 0.98, RS232.
 2. IDE on the board (mister126); MDOS 7.46; bq4847 clock registers are static (time of the last RTC load).
 3. Mouse (V9938 colour bus), joystick check, sound check, OSD options (boot ROM version, VRAM 192K).
