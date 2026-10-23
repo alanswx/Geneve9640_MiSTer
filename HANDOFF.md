@@ -31,6 +31,15 @@
   "Geneve Flying Shark (Genmod)" MGL = SharkBoot.dsk + FlyingShark.dsk, set Genmod On, Reset).
   SCRA/SPAD13A are E/A option 5 images (MDOS says Bad command; hloberg loads them in the E/A cartridge via GPL).
   MYART 1.4 (MAIN.CHD) stops at "Loading Please Wait" in MAME and in the sim alike (run from its directory?).
+- TI cartridges (GPL 7.40, GAMES.CHD CODGPL, 48 images; AUTOEXEC `TIMODE2|GPL B:NAME`, then F7 = ExeMod in
+  GPL's menu, a key, 2): 33 reach their title or game (Alpiner, Burgertime, Stud Poker, Chisholm Trail,
+  Fathom, Frogger, Ms. Pac-Man, M*A*S*H, Milton Bradley games, Microsurgeon, Miner 2049er, Moon Mine,
+  Moonsweeper, Munchman, Othello, Parsec, A-Maze-Ing, Popeye, Return to Pirate's Isle, TI Invaders, Tunnels of
+  Doom, Tombstone City, Video Chess, Wingwar, Blasto, Car Wars, Hunt the Wumpus, Kaboom, The Attack, Yahtzee...).
+  14 stay in GPL's menu with module "MENU" (4A Flyer, Donkey Kong, Hopper, Jungle Hunt, Pac-Man, Pole Position,
+  Sneggit, Anteater, Henpecked, Munchman II, Princess and Frog, Rotor Raider, Schnozola, Topper), Demon Attack
+  shows garbage, JMANJR "Can't load": the same in MAME (checked Anteater, Donkey Kong, Topper, Demon Attack);
+  hloberg starts them with MYGPL /1. Adventure asks for its data base (as expected without one).
 - Genmod (OSD "Genmod (Memex 2M)"; sim --genmod with --rom roms/gnmbt100.bin [--rom2 roms/gnmbt200.bin]):
   MAME's genmod with the TI mode switch on (as hloberg's setup) and TURBO on. Genmod boot EPROMs from MAME
   genmod.zip at boot.rom 98000/9C000 (tools/mkbootrom.py parts 7, 8). The Memex (2 MiB, SDRAM 200000-3FFFFF)
