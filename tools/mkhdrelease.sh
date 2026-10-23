@@ -18,9 +18,9 @@ cp "$M"/EXEC/EXEC "$M"/EXEC/EXEC28DOC "$T/"
 cp "$GYR"/GYRLOAD "$GYR"/GYRUSS1 "$GYR"/GYRUSS2 "$GYR"/GYRUSS3 "$GYR"/GYRUSS4 "$T/"
 txt() { python3 -I "$ROOT/tools/tidsk.py" --tifiles-text "$1" "$2" "$T/$1"; }
 txt AUTOEXEC 'ASSIGN C=SCS6:|C:|PATH C:\|PROMPT $N:\$P$G|HELP'
-txt HELP 'ECHO|ECHO Geneve 9640 MiSTer hard disk (IDE1 = SCS6. = C:)|ECHO|ECHO GYRUSS     Gyruss (joystick, P pause, ESC exits)|ECHO TI         TI mode: GPL cartridge menu|ECHO EXEC file  run an E/A option 5 program|ECHO HELP       this list|ECHO'
+txt HELP 'ECHO|ECHO Geneve 9640 MiSTer hard disk (IDE1 = SCS6. = C:)|ECHO|ECHO GYRUSS     Gyruss (joystick, P pause, ESC exits)|ECHO &TI        TI-99/4A mode (TI BASIC, cartridges)|ECHO EXEC file  run an E/A option 5 program|ECHO HELP       this list|ECHO'
 txt GYRUSS 'GYRLOAD SCS6.GYRUSS1'
-txt TI 'TIMODE2|GPL'
+txt TI 'TIMODE2|SCS6.MYGPL'
 mkdir -p "$OUT"
 "$ROOT/tools/mkideimage.sh" "$OUT/Geneve_HD.hdv" 32 "$M/MDOS/SYSTEM-SYS" "$LS/LOAD-IDE" "$DSR" "$T/idesram.bin" "$T"
 rm -f "$OUT/Geneve_HD.zip"

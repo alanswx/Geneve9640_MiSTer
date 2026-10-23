@@ -74,7 +74,7 @@ disk, which loads MDOS; MDOS sees the disk as `SCS6.` and the AUTOEXEC assigns i
 | Command | |
 |---|---|
 | `GYRUSS` | Gyruss (Geneve port of Rasmus Moustgaard's ColecoVision version; joystick, P pause, ESC exits) |
-| `TI` | TI mode and the GPL 7.40 cartridge menu (`GPL B:NAME` starts a cartridge image) |
+| `&TI` | TI-99/4A mode: restarts with TIMODE2 and starts MYGPL (Enter, any key, 1 = TI BASIC; `GPL B:NAME` in an AUTOEXEC starts a cartridge image) |
 | `EXEC file` | runs an Editor/Assembler option 5 program (EXEC 2.8) |
 | `HELP` | the list |
 
