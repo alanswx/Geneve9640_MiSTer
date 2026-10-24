@@ -1,8 +1,8 @@
 # Geneve 9640 MiSTer core — handoff
 
-## State (2026-10-22)
+## State (2026-10-24)
 
-Builds with Quartus 17 (63 % ALMs, 77 % RAM blocks, timing met). On mister126 it boots MDOS from floppy
+Builds with Quartus 17 (60 % ALMs, 77 % RAM blocks, timing met). On mister126 it boots MDOS from floppy
 and from the IDE disk; tested software is below. The sim (`verilator/`) runs the same RTL and matches MAME
 screen for screen where compared (`tools/compare_run.sh`); `tools/regress.sh` compares two builds.
 
@@ -47,12 +47,14 @@ bits 3 and 4 are no longer used).
 ### Software tested
 | Software | Result |
 |---|---|
-| MDOS 6.50, 6.70, 7.45 | boot from floppy; 7.45 from IDE (`releases/Geneve_HD.zip`) |
+| MDOS 6.50, 6.70, 7.45 | boot from floppy; 7.45 from IDE (`releases/Geneve_HD.zip`), also with Genmod |
+| TI BASIC, Adventure (Pirate's Adventure) | via GPL 7.40 / MYGPL (board, tester MGLs) |
 | 9640 News: MIXPIC, HIMIX3, BATWIND, BOXER, SFXER, MOUSE80 | as MAME |
 | Tetris (GAMES.CHD EXECGAMES) | plays (board) |
 | Pinball 99 | plays (board; start from its own drive, see below) |
 | Flying Shark | plays with Genmod (board); stock Geneve: "Insufficient memory" (also MAME, also 384K SRAM) |
 | Gyruss (geneve9640/gyruss) | title (sim, board image) |
+| hloberg's collection (`Geneve_Collection.hdv`, Genmod) | his menu; FROGGER (MYGPL /1), FLYSHARK, Zork I (board) |
 | GPL 7.40: 48 cartridge images (GAMES.CHD CODGPL) | 33 reach title/game; 15 fail the same way in MAME (below) |
 | EXEC 2.8 (E/A option 5) | Scrabble, SPAD 13, Buck Rogers and Congo Bongo titles; Eric in Monsterland: "Unsupported GPL access attempted" (EXEC) |
 | MyArt 1.4 (MAIN.CHD) | stops at "Loading Please Wait", as in MAME |
@@ -90,6 +92,8 @@ bits 3 and 4 are no longer used).
 | `releases/Geneve_HD.zip` | the shipped hard disk image (`tools/mkhdrelease.sh`) |
 | `tools/mkbootrom.py` | boot.rom (boot EPROMs, DDCC-1 DSR, IDE SRAM, speech ROM, Genmod EPROMs) |
 | `tools/mkideimage.sh`, `tools/mkidesram.py`, `tools/timt/MakeIDE.java` | IDE images with TIImageTool's classes (compile TIImageTool from emulators/tiimagetool with the RXTX jar + a gnu.io.DriverManager stub; TIMT / TIMT_LIB point at them) |
+| `tools/mkhdrelease.sh`, `tools/mkhdcollection.sh` | the release disk; hloberg's collection as one 128 MB IDE disk |
+| `tools/timt/CopyTree.java`, `tools/repath.py` | copy/export/import whole directory trees between TI images and folders; rewrite HDSn. device names in DIS/VAR 80 batch files |
 | `tools/tidsk.py` | V9T9 floppy images: list, extract, new, add TIFILES / DIS/VAR 80; DIS/VAR 80 as TIFILES |
 | `tools/compare_run.sh`, `tools/regress.sh`, `tools/tracecmp.py` | MAME vs sim, build vs build, trace compare |
 | `tools/remote_sync.sh`, `tools/kvms.sh` | copy tracked files to misterubuntu (git ls-files: add new files first); MiSTerKVMS CLI for mister126 |
@@ -99,10 +103,14 @@ from: SOURCES.md (keep it updated).
 
 ## Board files (mister126)
 
-- `_Computer/Geneve_20261022b.rbf` (all MGLs use it); older: `Geneve_20261022.rbf`, `Geneve_20261021.rbf`.
+- `_Computer/Geneve_20261022b.rbf` (newest); `Geneve_20261022.rbf` is the tester package's core (same RTL
+  except the board-only change) and some MGLs from the package point at it; older `Geneve_20261021.rbf`.
 - `games/Geneve/boot.rom` 640 KiB, all parts (`boot_20261021.rom`: without the Genmod EPROMs).
-- `_Geneve/*.mgl`: Geneve Hard Disk (Geneve_HD.hdv), Flying Shark (Genmod; set Memory = Genmod 2M), Pinball,
-  Tetris, MDOS650, MDOS650 + 9640News, MDOS670b, MDOS745 IDE, Mouse demo, TI BASIC (MDOS 7.45), Adventure (GPL).
+- `games/Geneve/Geneve_HD.hdv` (release disk), `Geneve_Collection.hdv` (128 MB, hloberg's collection).
+- `_Geneve/*.mgl`: the tester package's setups (Hard Disk, MDOS 6.50/6.70b, 9640 News, mouse, TI BASIC,
+  Adventure, Tetris, Pinball, Flying Shark, Speech) plus older duplicates from bring-up, and
+  "Geneve Collection (hloberg)". Cleanup of the duplicates is still open.
+- `config/Geneve_v1.CFG`: saved with Memory = Genmod 2M (for the collection); applies to every MGL.
 
 ## Gotchas found
 
@@ -122,7 +130,11 @@ from: SOURCES.md (keep it updated).
 
 ## Next
 
-1. Testers' reports (tester package: README in ~/Downloads/Geneve_tester_*.zip, built from the board files).
+1. Testers' reports. Packages (not in git: ROMs, commercial software), each with a README.txt:
+   `~/Downloads/Geneve_tester_20261022.zip` (core, boot.rom, release disk, floppies, MGLs) and
+   `~/Downloads/Geneve_personal_20261023.zip` (the same plus the collection disk and ~140 floppies from
+   whtech: 9640 News, hloberg's disks, cartridges, Tomy Tutor conversions, MDOS, tools; PC99 images
+   converted to V9T9, three unreadable ones left out).
 2. More software: `MYGPL /1` for the 15 cartridges, Extended BASIC 2.6 (DEVELOP.CHD XB) and its games,
-   Infocom (GAMES.CHD INFOCOM), MyArt from its own directory.
+   more of the collection's Infocom games and menus, MyArt from its own directory.
 3. Optional: RS232 (TI RS232 card), boot ROM 0.98 (in MAME's set), a second IDE drive.

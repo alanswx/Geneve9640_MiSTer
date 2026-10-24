@@ -113,4 +113,6 @@ found; note dead sites and their replacements.
 - F18A / TN VDP: https://github.com/lfantoniosi/f18a, https://github.com/lfantoniosi/tn_vdp
 - SN76489: https://github.com/jotego/jt89
 - MiSTer template: https://github.com/MiSTer-devel/Template_MiSTer
+- MiSTer Main (menu.cpp: OSD settings are saved only by System page > Save settings, to config/<core>_v<n>.CFG):
+  https://github.com/MiSTer-devel/Main_MiSTer
 - SDRAM: http://hamsterworks.co.nz/mediawiki/index.php/Simple_SDRAM_Controller
