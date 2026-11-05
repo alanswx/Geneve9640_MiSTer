@@ -7,6 +7,27 @@ It runs MDOS (the Geneve's own OS) and, through MDOS's GPL interpreter, TI-99/4A
 The machine follows MAME's `geneve` and `genmod` drivers (Michael Zapf): CPU microprograms, gate array,
 memory mapper, wait states and peripheral cards are ported from them and checked against them.
 
+## Installing
+
+1. Copy `Geneve_YYYYMMDD.rbf` from `releases/` to `_Computer/` on the SD card.
+2. Make `games/Geneve/boot.rom` from MAME ROM sets (below). It is loaded when the core starts. The core
+   doesn't include any ROMs.
+3. For the hard disk: unzip `releases/Geneve_HD.zip` into `games/Geneve/`, and copy
+   `releases/Geneve Hard Disk.mgl` to `_Geneve/` (or anywhere the MiSTer menu shows MGLs). Starting it boots
+   MDOS 7.45 from the hard disk. This needs a `boot.rom` with boot EPROM 2.00 and the IDE DSR (parts 3 and 4
+   under Files).
+
+To boot from a floppy instead, mount a V9T9 `.dsk` with MDOS on it (`SYSTEM/SYS`) as Pri. DSK1 and select
+Apply and reset. MDOS boot disks are on whtech (`Geneve/`, see SOURCES.md).
+
+The quickest `boot.rom` needs only MAME's `geneve.zip` and `ti99_ddcc1.zip`: unzip them and run
+
+```
+tools/mkbootrom.py boot.rom genbt100.bin ddcc1.u3
+```
+
+That boots MDOS from floppy. For the hard disk, speech and the Genmod, add the other parts (see Files).
+
 ## Hardware
 
 - TMS9995 at 3 MHz (cycle-exact port of MAME's microprograms), Gate Array and PAL, TMS9901, MM58274 clock
@@ -104,6 +125,23 @@ cd verilator && make
 
 See `HANDOFF.md` for the state of the work, the layout of the code and what was learned on the way, and
 `SOURCES.md` for where the documentation, software and ROMs came from.
+
+## Licenses
+
+The core is GPL-2 (LICENSE). Parts come from other projects under their own licenses:
+
+| Part | From | License |
+|---|---|---|
+| `rtl/tms9995` | port of MAME's tms9995.cpp (Michael Zapf) | BSD-3-Clause |
+| `rtl/geneve_ga.sv`, `rtl/geneve_core.sv`, `rtl/tms9901.sv`, `rtl/mm58274.sv` | new RTL following MAME's genboard.cpp, geneve.cpp, tms9901.cpp, mm58274c.cpp (Michael Zapf, Raphael Nabet; the Geneve files are LGPL-2.1+) | GPL-2 |
+| `rtl/vdp` | ESE VDP, Copyright (C) 2000-2006 Kunihiko Ohnaka, via OCM-PLD | ESE license: redistribution with the copyright notice; not to be sold or used commercially without permission (see the file headers) |
+| `rtl/speech` | TMS5220/TMS6100 from Erik Piehl's EP994A, via the TI-99/4A MiSTer core | LGPL |
+| `rtl/sn76496` | MiSTer-X | as its header |
+| `sys/` | MiSTer framework | GPL |
+
+The ROMs and the software on the hard disk image belong to their authors. The image holds MDOS 7.45, GPL
+7.40 and EXEC 2.8 (Beery Miller / 9640News, freely distributed), `LOAD-IDE` (BeeryMiller/LOAD-SYS) and
+Gyruss (geneve9640/gyruss).
 
 ## Credits
 

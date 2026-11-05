@@ -395,11 +395,13 @@ assign LED_DISK = {1'b0, disk_busy | ide_busy};
 
 /////////////////  DEBUG UART  //////////////////
 
+// Development only (define GENEVE_DEBUG_UART); released builds leave the UART idle.
 // Every 0.1 s on UART TX (/dev/ttyS1 on the HPS, 115200 baud), 16 hex digits:
 // PC | VDP debug (CE, cmd WR req/ack, RD req/ack, DOTSTATE, 0, cmd state, cmd) | CPU cycles[31:16] | ROM bytes/256 | flags
 wire [15:0] dbg_pc;
 wire [63:0] dbg_cycles;
 wire [15:0] dbg_vdp, dbg_vdpw;
+`ifdef GENEVE_DEBUG_UART
 reg   [7:0] dbg_dreq, dbg_dack, dbg_rom;
 always @(posedge clk_sys) begin
 	if (dram_req) dbg_dreq <= dbg_dreq + 1'd1;
@@ -415,6 +417,9 @@ dbg_uart #(.CLK_HZ(21477272), .PERIOD(2147727)) dbg_uart
 	        reset, pll_locked, ioctl_download, disk_busy, fdc_ready, 2'b00}),
 	.tx(UART_TXD)
 );
+`else
+assign UART_TXD = 0;
+`endif
 
 /////////////////  MACHINE  ///////////////////////
 
